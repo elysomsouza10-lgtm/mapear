@@ -6,39 +6,42 @@ canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
 let desenhando = false;
-let ultimoX = 0;
-let ultimoY = 0;
+let lastX = 0;
+let lastY = 0;
 
-let objeto = {
-  x: 300,
-  y: 300,
-  tamanho: 50,
-};
+function limpar() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
 
-navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
-  video.srcObject = stream;
-});
+navigator.mediaDevices
+  .getUserMedia({
+    video: {
+      facingMode: "environment",
+    },
+  })
+  .then((stream) => {
+    video.srcObject = stream;
+  });
 
 const hands = new Hands({
-  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+  locateFile: (file) => {
+    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+  },
 });
 
 hands.setOptions({
   maxNumHands: 1,
-  modelComplexity: 1,
+  modelComplexity: 0,
   minDetectionConfidence: 0.7,
   minTrackingConfidence: 0.7,
 });
 
 hands.onResults((results) => {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
   if (results.multiHandLandmarks) {
     let mao = results.multiHandLandmarks[0];
 
     let indicador = mao[8];
     let polegar = mao[4];
-    let medio = mao[12];
 
     let x = indicador.x * canvas.width;
     let y = indicador.y * canvas.height;
@@ -48,71 +51,35 @@ hands.onResults((results) => {
 
     let distancia = Math.sqrt(dx * dx + dy * dy);
 
-    // gesto pinça
     if (distancia < 0.05) {
-      document.getElementById("gesture").innerText = "Desenhando";
-
       if (!desenhando) {
         desenhando = true;
-        ultimoX = x;
-        ultimoY = y;
+        lastX = x;
+        lastY = y;
       }
 
       ctx.beginPath();
-      ctx.moveTo(ultimoX, ultimoY);
+      ctx.moveTo(lastX, lastY);
       ctx.lineTo(x, y);
+
       ctx.strokeStyle = "cyan";
       ctx.lineWidth = 5;
       ctx.stroke();
 
-      ultimoX = x;
-      ultimoY = y;
-    }
-
-    // dois dedos mover objeto
-    else if (medio.y < indicador.y) {
-      document.getElementById("gesture").innerText = "Movendo objeto";
-
-      objeto.x = x;
-      objeto.y = y;
-
-      desenhando = false;
+      lastX = x;
+      lastY = y;
     } else {
-      document.getElementById("gesture").innerText = "Cursor";
-
       desenhando = false;
     }
   }
-
-  ctx.fillStyle = "orange";
-
-  ctx.beginPath();
-
-  ctx.arc(objeto.x, objeto.y, objeto.tamanho, 0, Math.PI * 2);
-
-  ctx.fill();
 });
 
-const camera = new Camera(video, {
-  onFrame: async () => {
-    await hands.send({ image: video });
-  },
-  width: 640,
-  height: 480,
-});
+async function detectar() {
+  await hands.send({ image: video });
 
-camera.start();
+  requestAnimationFrame(detectar);
+}
 
-const videos = document.getElementById("video");
-
-navigator.mediaDevices
-  .getUserMedia({
-    video: true,
-    audio: false,
-  })
-  .then((stream) => {
-    video.srcObject = stream;
-  })
-  .catch((err) => {
-    alert("Erro ao acessar câmera: " + err);
-  });
+video.onloadeddata = () => {
+  detectar();
+};
