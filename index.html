@@ -1,22 +1,130 @@
 <!doctype html>
-<html>
+<html lang="pt">
   <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta charset="UTF-8" />
 
-    <link rel="stylesheet" href="style.css" />
+    <title>IA mão</title>
 
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: black;
+      }
+
+      video {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transform: scaleX(-1);
+      }
+
+      canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+    </style>
   </head>
 
   <body>
     <video id="video" autoplay playsinline></video>
     <canvas id="canvas"></canvas>
 
-    <div class="menu">
-      <button onclick="limpar()">Limpar</button>
-    </div>
+    <script>
+      const video = document.getElementById("video");
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
 
-    <script src="script.js"></script>
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      let desenhando = false;
+      let lastX = 0;
+      let lastY = 0;
+
+      navigator.mediaDevices
+        .getUserMedia({
+          video: { facingMode: "environment" },
+        })
+        .then((stream) => {
+          video.srcObject = stream;
+        });
+
+      const hands = new Hands({
+        locateFile: (file) => {
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        },
+      });
+
+      hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 0,
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence: 0.6,
+      });
+
+      hands.onResults((results) => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (results.multiHandLandmarks) {
+          for (const landmarks of results.multiHandLandmarks) {
+            // desenhar pontos da mão
+            drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {
+              color: "#00FF00",
+              lineWidth: 3,
+            });
+
+            drawLandmarks(ctx, landmarks, { color: "#FF0000", lineWidth: 2 });
+
+            let indicador = landmarks[8];
+            let polegar = landmarks[4];
+
+            let x = indicador.x * canvas.width;
+            let y = indicador.y * canvas.height;
+
+            let dx = indicador.x - polegar.x;
+            let dy = indicador.y - polegar.y;
+
+            let distancia = Math.sqrt(dx * dx + dy * dy);
+
+            if (distancia < 0.05) {
+              if (!desenhando) {
+                desenhando = true;
+                lastX = x;
+                lastY = y;
+              }
+
+              ctx.beginPath();
+              ctx.moveTo(lastX, lastY);
+              ctx.lineTo(x, y);
+              ctx.strokeStyle = "cyan";
+              ctx.lineWidth = 5;
+              ctx.stroke();
+
+              lastX = x;
+              lastY = y;
+            } else {
+              desenhando = false;
+            }
+          }
+        }
+      });
+
+      async function loop() {
+        await hands.send({ image: video });
+
+        requestAnimationFrame(loop);
+      }
+
+      video.onloadeddata = () => {
+        loop();
+      };
+    </script>
   </body>
 </html>
