@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <title>Mapeamento de mão</title>
+    <title>Gesture AI</title>
 
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
@@ -30,12 +30,27 @@
         top: 0;
         left: 0;
       }
+
+      .menu {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        background: white;
+        padding: 10px;
+        border-radius: 10px;
+      }
     </style>
   </head>
 
   <body>
     <video id="video" autoplay playsinline></video>
     <canvas id="canvas"></canvas>
+
+    <div class="menu">
+      <button onclick="modo = 'draw'">Desenhar</button>
+      <button onclick="modo = 'move'">Mover</button>
+      <button onclick="limpar()">Limpar</button>
+    </div>
 
     <script>
       const video = document.getElementById("video");
@@ -45,7 +60,22 @@
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
 
-      // abrir câmera
+      let modo = "draw";
+
+      let desenhando = false;
+      let lastX = 0;
+      let lastY = 0;
+
+      let objeto = {
+        x: 300,
+        y: 300,
+        r: 40,
+      };
+
+      function limpar() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+
       navigator.mediaDevices
         .getUserMedia({
           video: { facingMode: "environment" },
@@ -63,19 +93,24 @@
       hands.setOptions({
         maxNumHands: 1,
         modelComplexity: 1,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5,
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence: 0.6,
       });
 
       hands.onResults((results) => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+        // desenhar objeto
+        ctx.beginPath();
+        ctx.arc(objeto.x, objeto.y, objeto.r, 0, Math.PI * 2);
+        ctx.fillStyle = "orange";
+        ctx.fill();
+
         if (results.multiHandLandmarks) {
           for (const landmarks of results.multiHandLandmarks) {
-            // desenha a mão
             drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {
               color: "#00FF00",
-              lineWidth: 4,
+              lineWidth: 3,
             });
 
             drawLandmarks(ctx, landmarks, {
@@ -83,17 +118,49 @@
               lineWidth: 2,
             });
 
-            // ponto do dedo indicador
             let indicador = landmarks[8];
+            let polegar = landmarks[4];
 
             let x = indicador.x * canvas.width;
             let y = indicador.y * canvas.height;
 
-            // desenhar cursor
+            // cursor
             ctx.beginPath();
             ctx.arc(x, y, 10, 0, Math.PI * 2);
             ctx.fillStyle = "cyan";
             ctx.fill();
+
+            let dx = indicador.x - polegar.x;
+            let dy = indicador.y - polegar.y;
+            let distancia = Math.sqrt(dx * dx + dy * dy);
+
+            // gesto pinça
+            if (distancia < 0.05) {
+              if (modo === "draw") {
+                if (!desenhando) {
+                  desenhando = true;
+                  lastX = x;
+                  lastY = y;
+                }
+
+                ctx.beginPath();
+                ctx.moveTo(lastX, lastY);
+                ctx.lineTo(x, y);
+                ctx.strokeStyle = "yellow";
+                ctx.lineWidth = 5;
+                ctx.stroke();
+
+                lastX = x;
+                lastY = y;
+              }
+
+              if (modo === "move") {
+                objeto.x = x;
+                objeto.y = y;
+              }
+            } else {
+              desenhando = false;
+            }
           }
         }
       });
