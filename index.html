@@ -1,12 +1,13 @@
 <!doctype html>
 <html lang="pt">
   <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <title>IA mão</title>
+    <title>Mapeamento de mão</title>
 
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 
     <style>
@@ -44,10 +45,7 @@
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
 
-      let desenhando = false;
-      let lastX = 0;
-      let lastY = 0;
-
+      // abrir câmera
       navigator.mediaDevices
         .getUserMedia({
           video: { facingMode: "environment" },
@@ -64,9 +62,9 @@
 
       hands.setOptions({
         maxNumHands: 1,
-        modelComplexity: 0,
-        minDetectionConfidence: 0.6,
-        minTrackingConfidence: 0.6,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
       });
 
       hands.onResults((results) => {
@@ -74,57 +72,41 @@
 
         if (results.multiHandLandmarks) {
           for (const landmarks of results.multiHandLandmarks) {
-            // desenhar pontos da mão
+            // desenha a mão
             drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {
               color: "#00FF00",
-              lineWidth: 3,
+              lineWidth: 4,
             });
 
-            drawLandmarks(ctx, landmarks, { color: "#FF0000", lineWidth: 2 });
+            drawLandmarks(ctx, landmarks, {
+              color: "#FF0000",
+              lineWidth: 2,
+            });
 
+            // ponto do dedo indicador
             let indicador = landmarks[8];
-            let polegar = landmarks[4];
 
             let x = indicador.x * canvas.width;
             let y = indicador.y * canvas.height;
 
-            let dx = indicador.x - polegar.x;
-            let dy = indicador.y - polegar.y;
-
-            let distancia = Math.sqrt(dx * dx + dy * dy);
-
-            if (distancia < 0.05) {
-              if (!desenhando) {
-                desenhando = true;
-                lastX = x;
-                lastY = y;
-              }
-
-              ctx.beginPath();
-              ctx.moveTo(lastX, lastY);
-              ctx.lineTo(x, y);
-              ctx.strokeStyle = "cyan";
-              ctx.lineWidth = 5;
-              ctx.stroke();
-
-              lastX = x;
-              lastY = y;
-            } else {
-              desenhando = false;
-            }
+            // desenhar cursor
+            ctx.beginPath();
+            ctx.arc(x, y, 10, 0, Math.PI * 2);
+            ctx.fillStyle = "cyan";
+            ctx.fill();
           }
         }
       });
 
-      async function loop() {
-        await hands.send({ image: video });
+      const camera = new Camera(video, {
+        onFrame: async () => {
+          await hands.send({ image: video });
+        },
+        width: 640,
+        height: 480,
+      });
 
-        requestAnimationFrame(loop);
-      }
-
-      video.onloadeddata = () => {
-        loop();
-      };
+      camera.start();
     </script>
   </body>
 </html>
