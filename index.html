@@ -87,9 +87,22 @@
 
       let desenhando = [];
 
+      let suavX = 0;
+      let suavY = 0;
+
       function limpar() {
         desenhando = [];
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+
+      // detectar mão fechada
+      function maoFechada(landmarks) {
+        return (
+          landmarks[8].y > landmarks[6].y &&
+          landmarks[12].y > landmarks[10].y &&
+          landmarks[16].y > landmarks[14].y &&
+          landmarks[20].y > landmarks[18].y
+        );
       }
 
       const hands = new Hands({
@@ -100,9 +113,9 @@
 
       hands.setOptions({
         maxNumHands: 1,
-        modelComplexity: 1,
-        minDetectionConfidence: 0.7,
-        minTrackingConfidence: 0.7,
+        modelComplexity: 0,
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence: 0.6,
       });
 
       hands.onResults((results) => {
@@ -110,15 +123,23 @@
 
         if (results.multiHandLandmarks) {
           for (const landmarks of results.multiHandLandmarks) {
+            // detectar mão fechada
+            if (maoFechada(landmarks)) {
+              limpar();
+              return;
+            }
+
             const indicador = landmarks[8];
 
-            const x = indicador.x * canvas.width;
-            const y = indicador.y * canvas.height;
+            let x = (1 - indicador.x) * canvas.width;
+            let y = indicador.y * canvas.height;
 
-            // salvar desenho
-            desenhando.push({ x, y });
+            // suavização
+            suavX = suavX * 0.7 + x * 0.3;
+            suavY = suavY * 0.7 + y * 0.3;
 
-            // desenhar linha
+            desenhando.push({ x: suavX, y: suavY });
+
             ctx.beginPath();
 
             for (let i = 0; i < desenhando.length; i++) {
@@ -130,12 +151,12 @@
             ctx.stroke();
 
             // mover objeto
-            objeto.style.left = x + "px";
-            objeto.style.top = y + "px";
+            objeto.style.left = suavX + "px";
+            objeto.style.top = suavY + "px";
 
-            // desenhar ponto da mão
+            // desenhar pontos da mão
             for (const ponto of landmarks) {
-              const px = ponto.x * canvas.width;
+              const px = (1 - ponto.x) * canvas.width;
               const py = ponto.y * canvas.height;
 
               ctx.beginPath();
@@ -151,8 +172,8 @@
         onFrame: async () => {
           await hands.send({ image: video });
         },
-        width: 640,
-        height: 480,
+        width: 480,
+        height: 360,
       });
 
       camera.start();
