@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <title>IA Mapeamento de Mão</title>
+    <title>IA Gestos com Mão</title>
 
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
@@ -12,32 +12,38 @@
 
     <style>
       body {
+        margin: 0;
         background: #0f172a;
         color: white;
         font-family: Arial;
-        text-align: center;
+        overflow: hidden;
       }
 
       h1 {
-        margin-top: 10px;
+        position: absolute;
+        top: 10px;
+        left: 20px;
+        z-index: 10;
       }
 
       .container {
         position: relative;
-        width: 640px;
-        margin: auto;
+        width: 100vw;
+        height: 100vh;
       }
 
       video {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
         transform: scaleX(-1);
-        width: 640px;
-        height: 480px;
       }
 
       canvas {
         position: absolute;
-        left: 0;
-        top: 0;
+        width: 100%;
+        height: 100%;
       }
 
       #objeto {
@@ -50,21 +56,28 @@
         left: 200px;
       }
 
+      .menu {
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        z-index: 10;
+      }
+
       button {
-        margin-top: 15px;
-        padding: 10px 20px;
+        padding: 10px 15px;
+        margin: 5px;
         border: none;
         border-radius: 10px;
         background: #22c55e;
         color: white;
-        font-size: 16px;
+        font-size: 14px;
         cursor: pointer;
       }
     </style>
   </head>
 
   <body>
-    <h1>IA de Mapeamento de Mão</h1>
+    <h1>Controle por Gestos</h1>
 
     <div class="container">
       <video id="video" autoplay playsinline></video>
@@ -74,7 +87,14 @@
       <div id="objeto"></div>
     </div>
 
-    <button onclick="limpar()">Limpar desenho</button>
+    <div class="menu">
+      <button onclick="cor = 'cyan'">Azul</button>
+      <button onclick="cor = 'red'">Vermelho</button>
+      <button onclick="cor = 'yellow'">Amarelo</button>
+
+      <button onclick="limpar()">Limpar</button>
+      <button onclick="salvar()">Salvar</button>
+    </div>
 
     <script>
       const video = document.getElementById("video");
@@ -82,10 +102,11 @@
       const ctx = canvas.getContext("2d");
       const objeto = document.getElementById("objeto");
 
-      canvas.width = 640;
-      canvas.height = 480;
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
 
       let desenhando = [];
+      let cor = "cyan";
 
       let suavX = 0;
       let suavY = 0;
@@ -93,6 +114,13 @@
       function limpar() {
         desenhando = [];
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+
+      function salvar() {
+        let link = document.createElement("a");
+        link.download = "desenho.png";
+        link.href = canvas.toDataURL();
+        link.click();
       }
 
       // detectar mão fechada
@@ -103,6 +131,24 @@
           landmarks[16].y > landmarks[14].y &&
           landmarks[20].y > landmarks[18].y
         );
+      }
+
+      // dedo indicador levantado
+      function dedoIndicador(landmarks) {
+        return landmarks[8].y < landmarks[6].y;
+      }
+
+      // gesto pinça
+      function pinça(landmarks) {
+        let polegar = landmarks[4];
+        let indicador = landmarks[8];
+
+        let dx = polegar.x - indicador.x;
+        let dy = polegar.y - indicador.y;
+
+        let distancia = Math.sqrt(dx * dx + dy * dy);
+
+        return distancia < 0.05;
       }
 
       const hands = new Hands({
@@ -123,7 +169,6 @@
 
         if (results.multiHandLandmarks) {
           for (const landmarks of results.multiHandLandmarks) {
-            // detectar mão fechada
             if (maoFechada(landmarks)) {
               limpar();
               return;
@@ -134,11 +179,12 @@
             let x = (1 - indicador.x) * canvas.width;
             let y = indicador.y * canvas.height;
 
-            // suavização
             suavX = suavX * 0.7 + x * 0.3;
             suavY = suavY * 0.7 + y * 0.3;
 
-            desenhando.push({ x: suavX, y: suavY });
+            if (dedoIndicador(landmarks)) {
+              desenhando.push({ x: suavX, y: suavY });
+            }
 
             ctx.beginPath();
 
@@ -146,15 +192,19 @@
               ctx.lineTo(desenhando[i].x, desenhando[i].y);
             }
 
-            ctx.strokeStyle = "cyan";
+            ctx.strokeStyle = cor;
             ctx.lineWidth = 4;
             ctx.stroke();
 
-            // mover objeto
-            objeto.style.left = suavX + "px";
-            objeto.style.top = suavY + "px";
+            // mover objeto com pinça
+
+            if (pinça(landmarks)) {
+              objeto.style.left = suavX + "px";
+              objeto.style.top = suavY + "px";
+            }
 
             // desenhar pontos da mão
+
             for (const ponto of landmarks) {
               const px = (1 - ponto.x) * canvas.width;
               const py = ponto.y * canvas.height;
@@ -172,8 +222,9 @@
         onFrame: async () => {
           await hands.send({ image: video });
         },
-        width: 480,
-        height: 360,
+
+        width: 640,
+        height: 480,
       });
 
       camera.start();
