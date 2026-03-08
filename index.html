@@ -8,6 +8,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 
     <style>
       body {
@@ -122,29 +123,32 @@
         link.click();
       }
 
-      function maoFechada(l) {
+      // detectar mão fechada
+      function maoFechada(landmarks) {
         return (
-          l[8].y > l[6].y &&
-          l[12].y > l[10].y &&
-          l[16].y > l[14].y &&
-          l[20].y > l[18].y
+          landmarks[8].y > landmarks[6].y &&
+          landmarks[12].y > landmarks[10].y &&
+          landmarks[16].y > landmarks[14].y &&
+          landmarks[20].y > landmarks[18].y
         );
       }
 
-      function dedoIndicador(l) {
-        return l[8].y < l[6].y;
+      // dedo indicador levantado
+      function dedoIndicador(landmarks) {
+        return landmarks[8].y < landmarks[6].y;
       }
 
-      function pinça(l) {
-        let polegar = l[4];
-        let indicador = l[8];
+      // gesto pinça
+      function pinça(landmarks) {
+        let polegar = landmarks[4];
+        let indicador = landmarks[8];
 
         let dx = polegar.x - indicador.x;
         let dy = polegar.y - indicador.y;
 
         let distancia = Math.sqrt(dx * dx + dy * dy);
 
-        return distancia < 0.06;
+        return distancia < 0.05;
       }
 
       const hands = new Hands({
@@ -161,6 +165,8 @@
       });
 
       hands.onResults((results) => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
         if (results.multiHandLandmarks) {
           for (const landmarks of results.multiHandLandmarks) {
             if (maoFechada(landmarks)) {
@@ -173,32 +179,31 @@
             let x = (1 - indicador.x) * canvas.width;
             let y = indicador.y * canvas.height;
 
-            const suavidade = 0.25;
-
-            suavX += (x - suavX) * suavidade;
-            suavY += (y - suavY) * suavidade;
+            suavX = suavX * 0.7 + x * 0.3;
+            suavY = suavY * 0.7 + y * 0.3;
 
             if (dedoIndicador(landmarks)) {
               desenhando.push({ x: suavX, y: suavY });
-
-              if (desenhando.length > 1) {
-                let p1 = desenhando[desenhando.length - 2];
-                let p2 = desenhando[desenhando.length - 1];
-
-                ctx.beginPath();
-                ctx.moveTo(p1.x, p1.y);
-                ctx.lineTo(p2.x, p2.y);
-
-                ctx.strokeStyle = cor;
-                ctx.lineWidth = 4;
-                ctx.stroke();
-              }
             }
+
+            ctx.beginPath();
+
+            for (let i = 0; i < desenhando.length; i++) {
+              ctx.lineTo(desenhando[i].x, desenhando[i].y);
+            }
+
+            ctx.strokeStyle = cor;
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            // mover objeto com pinça
 
             if (pinça(landmarks)) {
               objeto.style.left = suavX + "px";
               objeto.style.top = suavY + "px";
             }
+
+            // desenhar pontos da mão
 
             for (const ponto of landmarks) {
               const px = (1 - ponto.x) * canvas.width;
