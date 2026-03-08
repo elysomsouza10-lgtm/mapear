@@ -2,132 +2,90 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Desenho com Mão e Som</title>
+    <title>Detector de Mão Leve</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
     <style>
       body {
         margin: 0;
-        background: #111;
         overflow: hidden;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
+        background: black;
       }
+
+      video,
       canvas {
         position: absolute;
-        touch-action: none;
+        transform: scaleX(-1);
       }
     </style>
   </head>
-  <body>
-    <video id="video" autoplay playsinline style="display: none"></video>
-    <canvas id="canvas"></canvas>
-    <audio
-      id="sound"
-      src="https://www.myinstants.com/media/sounds/tuturu.mp3"
-    ></audio>
 
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
+  <body>
+    <video class="input_video"></video>
+    <canvas class="output_canvas"></canvas>
 
     <script>
-      const video = document.getElementById("video");
-      const canvas = document.getElementById("canvas");
-      const ctx = canvas.getContext("2d");
-      const sound = document.getElementById("sound");
+      const videoElement = document.querySelector(".input_video");
+      const canvasElement = document.querySelector(".output_canvas");
+      const canvasCtx = canvasElement.getContext("2d");
 
-      canvas.width = window.innerWidth * window.devicePixelRatio;
-      canvas.height = window.innerHeight * window.devicePixelRatio;
-      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+      canvasElement.width = 640;
+      canvasElement.height = 480;
 
-      let lastX = null;
-      let lastY = null;
-      let frameCounter = 0;
+      function onResults(results) {
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-      async function setupCamera() {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 320, height: 240 },
-          audio: false,
-        });
-        video.srcObject = stream;
-        return new Promise(
-          (resolve) => (video.onloadedmetadata = () => resolve(video)),
+        canvasCtx.drawImage(
+          results.image,
+          0,
+          0,
+          canvasElement.width,
+          canvasElement.height,
         );
-      }
 
-      async function main() {
-        await setupCamera();
+        if (results.multiHandLandmarks) {
+          for (const landmarks of results.multiHandLandmarks) {
+            drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {
+              color: "#00ff88",
+              lineWidth: 2,
+            });
 
-        const model = handPoseDetection.SupportedModels.MediaPipeHands;
-        const detector = await handPoseDetection.createDetector(model, {
-          runtime: "tfjs",
-          maxHands: 1,
-          modelType: "lite",
-        });
-
-        async function detectHands() {
-          frameCounter++;
-          // Fade para efeito rastro
-          ctx.fillStyle = "rgba(0,0,0,0.1)";
-          ctx.fillRect(
-            0,
-            0,
-            canvas.width / window.devicePixelRatio,
-            canvas.height / window.devicePixelRatio,
-          );
-
-          if (frameCounter % 2 === 0) {
-            const hands = await detector.estimateHands(video);
-            if (hands.length > 0) {
-              const keypoints = hands[0].keypoints;
-              const indexFinger = keypoints.find(
-                (p) => p.name === "index_finger_tip",
-              );
-              if (indexFinger) {
-                const x =
-                  (indexFinger.x * (canvas.width / video.videoWidth)) /
-                  window.devicePixelRatio;
-                const y =
-                  (indexFinger.y * (canvas.height / video.videoHeight)) /
-                  window.devicePixelRatio;
-
-                // Desenha linha do movimento
-                if (lastX !== null && lastY !== null) {
-                  ctx.beginPath();
-                  ctx.moveTo(lastX, lastY);
-                  ctx.lineTo(x, y);
-                  ctx.strokeStyle = "cyan";
-                  ctx.lineWidth = 4;
-                  ctx.stroke();
-                }
-
-                // Desenha círculo no dedo
-                ctx.beginPath();
-                ctx.arc(x, y, 8, 0, 2 * Math.PI);
-                ctx.fillStyle = "magenta";
-                ctx.fill();
-
-                // Toca som se movimento rápido
-                if (lastY !== null && Math.abs(y - lastY) > 40) {
-                  sound.currentTime = 0;
-                  sound.play();
-                }
-
-                lastX = x;
-                lastY = y;
-              }
-            }
+            drawLandmarks(canvasCtx, landmarks, {
+              color: "#ff0000",
+              lineWidth: 1,
+            });
           }
-
-          requestAnimationFrame(detectHands);
         }
-
-        detectHands();
       }
 
-      main();
+      const hands = new Hands({
+        locateFile: (file) => {
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        },
+      });
+
+      hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 0, // 🔥 deixa muito mais leve
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence: 0.6,
+      });
+
+      hands.onResults(onResults);
+
+      const camera = new Camera(videoElement, {
+        onFrame: async () => {
+          await hands.send({ image: videoElement });
+        },
+
+        width: 640, // 🔥 resolução menor
+        height: 480,
+      });
+
+      camera.start();
     </script>
   </body>
 </html>
