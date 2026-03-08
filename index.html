@@ -80,7 +80,6 @@
 
     <div class="container">
       <video id="video" autoplay playsinline></video>
-
       <canvas id="canvas"></canvas>
 
       <div id="objeto"></div>
@@ -110,6 +109,8 @@
       let suavX = 0;
       let suavY = 0;
 
+      let particulas = [];
+
       function limpar() {
         desenhando = [];
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -120,6 +121,37 @@
         link.download = "desenho.png";
         link.href = canvas.toDataURL();
         link.click();
+      }
+
+      function criarParticulas(x, y) {
+        for (let i = 0; i < 4; i++) {
+          particulas.push({
+            x: x,
+            y: y,
+            vx: (Math.random() - 0.5) * 3,
+            vy: (Math.random() - 0.5) * 3,
+            vida: 15,
+          });
+        }
+      }
+
+      function atualizarParticulas() {
+        for (let i = particulas.length - 1; i >= 0; i--) {
+          let p = particulas[i];
+
+          p.x += p.vx;
+          p.y += p.vy;
+          p.vida--;
+
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+          ctx.fillStyle = cor;
+          ctx.fill();
+
+          if (p.vida <= 0) {
+            particulas.splice(i, 1);
+          }
+        }
       }
 
       function maoFechada(l) {
@@ -161,6 +193,8 @@
       });
 
       hands.onResults((results) => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
         if (results.multiHandLandmarks) {
           for (const landmarks of results.multiHandLandmarks) {
             if (maoFechada(landmarks)) {
@@ -177,6 +211,8 @@
 
             suavX += (x - suavX) * suavidade;
             suavY += (y - suavY) * suavidade;
+
+            criarParticulas(suavX, suavY);
 
             if (dedoIndicador(landmarks)) {
               desenhando.push({ x: suavX, y: suavY });
@@ -211,6 +247,8 @@
             }
           }
         }
+
+        atualizarParticulas();
       });
 
       const camera = new Camera(video, {
