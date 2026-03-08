@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <title>IA Gestos + Memes</title>
+    <title>IA Gestos com Mão</title>
 
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
@@ -16,6 +16,19 @@
         color: white;
         font-family: Arial;
         overflow: hidden;
+      }
+
+      h1 {
+        position: absolute;
+        top: 10px;
+        left: 20px;
+        z-index: 10;
+      }
+
+      .container {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
       }
 
       video {
@@ -56,16 +69,22 @@
         border-radius: 10px;
         background: #22c55e;
         color: white;
+        font-size: 14px;
         cursor: pointer;
       }
     </style>
   </head>
 
   <body>
-    <video id="video" autoplay playsinline></video>
-    <canvas id="canvas"></canvas>
+    <h1>Controle por Gestos</h1>
 
-    <div id="objeto"></div>
+    <div class="container">
+      <video id="video" autoplay playsinline></video>
+
+      <canvas id="canvas"></canvas>
+
+      <div id="objeto"></div>
+    </div>
 
     <div class="menu">
       <button onclick="cor = 'cyan'">Azul</button>
@@ -76,14 +95,11 @@
       <button onclick="salvar()">Salvar</button>
     </div>
 
-    <audio id="memeSound" src="vineboom.mp3"></audio>
-
     <script>
       const video = document.getElementById("video");
       const canvas = document.getElementById("canvas");
       const ctx = canvas.getContext("2d");
       const objeto = document.getElementById("objeto");
-      const meme = document.getElementById("memeSound");
 
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
@@ -93,11 +109,6 @@
 
       let suavX = 0;
       let suavY = 0;
-
-      let ultimoX = 0;
-      let ultimoY = 0;
-
-      let particulas = [];
 
       function limpar() {
         desenhando = [];
@@ -109,56 +120,6 @@
         link.download = "desenho.png";
         link.href = canvas.toDataURL();
         link.click();
-      }
-
-      function criarParticulas(x, y) {
-        for (let i = 0; i < 5; i++) {
-          let angulo = Math.random() * Math.PI * 2;
-          let velocidade = Math.random() * 3;
-
-          particulas.push({
-            x: x,
-            y: y,
-            vx: Math.cos(angulo) * velocidade,
-            vy: Math.sin(angulo) * velocidade,
-            vida: 15,
-            tamanho: Math.random() * 4 + 2,
-          });
-        }
-      }
-
-      function atualizarParticulas() {
-        for (let i = particulas.length - 1; i >= 0; i--) {
-          let p = particulas[i];
-
-          p.x += p.vx;
-          p.y += p.vy;
-          p.vida--;
-
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.tamanho, 0, Math.PI * 2);
-          ctx.fillStyle = cor;
-          ctx.fill();
-
-          if (p.vida <= 0) {
-            particulas.splice(i, 1);
-          }
-        }
-      }
-
-      function detectarMovimento(x, y) {
-        let dx = x - ultimoX;
-        let dy = y - ultimoY;
-
-        let velocidade = Math.sqrt(dx * dx + dy * dy);
-
-        if (velocidade > 80) {
-          meme.currentTime = 0;
-          meme.play();
-        }
-
-        ultimoX = x;
-        ultimoY = y;
       }
 
       function maoFechada(l) {
@@ -200,8 +161,6 @@
       });
 
       hands.onResults((results) => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
         if (results.multiHandLandmarks) {
           for (const landmarks of results.multiHandLandmarks) {
             if (maoFechada(landmarks)) {
@@ -218,10 +177,6 @@
 
             suavX += (x - suavX) * suavidade;
             suavY += (y - suavY) * suavidade;
-
-            detectarMovimento(suavX, suavY);
-
-            criarParticulas(suavX, suavY);
 
             if (dedoIndicador(landmarks)) {
               desenhando.push({ x: suavX, y: suavY });
@@ -256,8 +211,6 @@
             }
           }
         }
-
-        atualizarParticulas();
       });
 
       const camera = new Camera(video, {
