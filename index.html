@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mapeamento de Movimentos com Som</title>
+    <title>Desenho com Mão e Som</title>
     <style>
       body {
         margin: 0;
@@ -16,6 +16,7 @@
       }
       canvas {
         position: absolute;
+        touch-action: none;
       }
     </style>
   </head>
@@ -27,7 +28,6 @@
       src="https://www.myinstants.com/media/sounds/tuturu.mp3"
     ></audio>
 
-    <!-- TensorFlow.js e modelos -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
@@ -38,14 +38,18 @@
       const ctx = canvas.getContext("2d");
       const sound = document.getElementById("sound");
 
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      canvas.width = window.innerWidth * window.devicePixelRatio;
+      canvas.height = window.innerHeight * window.devicePixelRatio;
+      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
 
-      let lastY = null; // Para detectar movimentos verticais
+      let lastX = null;
+      let lastY = null;
+      let frameCounter = 0;
 
       async function setupCamera() {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 640, height: 480 },
+          video: { width: 320, height: 240 },
+          audio: false,
         });
         video.srcObject = stream;
         return new Promise(
@@ -56,40 +60,64 @@
       async function main() {
         await setupCamera();
 
-        // Modelo de detecção de mãos
         const model = handPoseDetection.SupportedModels.MediaPipeHands;
         const detector = await handPoseDetection.createDetector(model, {
           runtime: "tfjs",
           maxHands: 1,
+          modelType: "lite",
         });
 
         async function detectHands() {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          frameCounter++;
+          // Fade para efeito rastro
+          ctx.fillStyle = "rgba(0,0,0,0.1)";
+          ctx.fillRect(
+            0,
+            0,
+            canvas.width / window.devicePixelRatio,
+            canvas.height / window.devicePixelRatio,
+          );
 
-          const hands = await detector.estimateHands(video);
+          if (frameCounter % 2 === 0) {
+            const hands = await detector.estimateHands(video);
+            if (hands.length > 0) {
+              const keypoints = hands[0].keypoints;
+              const indexFinger = keypoints.find(
+                (p) => p.name === "index_finger_tip",
+              );
+              if (indexFinger) {
+                const x =
+                  (indexFinger.x * (canvas.width / video.videoWidth)) /
+                  window.devicePixelRatio;
+                const y =
+                  (indexFinger.y * (canvas.height / video.videoHeight)) /
+                  window.devicePixelRatio;
 
-          if (hands.length > 0) {
-            const keypoints = hands[0].keypoints;
-            const indexFinger = keypoints.find(
-              (p) => p.name === "index_finger_tip",
-            );
+                // Desenha linha do movimento
+                if (lastX !== null && lastY !== null) {
+                  ctx.beginPath();
+                  ctx.moveTo(lastX, lastY);
+                  ctx.lineTo(x, y);
+                  ctx.strokeStyle = "cyan";
+                  ctx.lineWidth = 4;
+                  ctx.stroke();
+                }
 
-            if (indexFinger) {
-              const x = indexFinger.x * (canvas.width / video.videoWidth);
-              const y = indexFinger.y * (canvas.height / video.videoHeight);
+                // Desenha círculo no dedo
+                ctx.beginPath();
+                ctx.arc(x, y, 8, 0, 2 * Math.PI);
+                ctx.fillStyle = "magenta";
+                ctx.fill();
 
-              // Desenhar círculo no dedo indicador
-              ctx.beginPath();
-              ctx.arc(x, y, 12, 0, 2 * Math.PI);
-              ctx.fillStyle = "cyan";
-              ctx.fill();
+                // Toca som se movimento rápido
+                if (lastY !== null && Math.abs(y - lastY) > 40) {
+                  sound.currentTime = 0;
+                  sound.play();
+                }
 
-              // Detecta movimento vertical rápido para tocar som
-              if (lastY !== null && Math.abs(y - lastY) > 50) {
-                sound.currentTime = 0;
-                sound.play();
+                lastX = x;
+                lastY = y;
               }
-              lastY = y;
             }
           }
 
