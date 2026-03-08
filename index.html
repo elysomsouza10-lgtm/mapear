@@ -1,105 +1,275 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mapeamento de Movimentos com Som</title>
+
+    <title>IA Gestos + Memes</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
     <style>
       body {
         margin: 0;
-        background: #111;
+        background: #0f172a;
+        color: white;
+        font-family: Arial;
         overflow: hidden;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
       }
+
+      video {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transform: scaleX(-1);
+      }
+
       canvas {
         position: absolute;
+        width: 100%;
+        height: 100%;
+      }
+
+      #objeto {
+        position: absolute;
+        width: 60px;
+        height: 60px;
+        background: red;
+        border-radius: 10px;
+        top: 200px;
+        left: 200px;
+      }
+
+      .menu {
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        z-index: 10;
+      }
+
+      button {
+        padding: 10px 15px;
+        margin: 5px;
+        border: none;
+        border-radius: 10px;
+        background: #22c55e;
+        color: white;
+        cursor: pointer;
       }
     </style>
   </head>
-  <body>
-    <video id="video" autoplay playsinline style="display: none"></video>
-    <canvas id="canvas"></canvas>
-    <audio
-      id="sound"
-      src="https://www.myinstants.com/media/sounds/tuturu.mp3"
-    ></audio>
 
-    <!-- TensorFlow.js e modelos -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
+  <body>
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
+
+    <div id="objeto"></div>
+
+    <div class="menu">
+      <button onclick="cor = 'cyan'">Azul</button>
+      <button onclick="cor = 'red'">Vermelho</button>
+      <button onclick="cor = 'yellow'">Amarelo</button>
+
+      <button onclick="limpar()">Limpar</button>
+      <button onclick="salvar()">Salvar</button>
+    </div>
+
+    <audio id="memeSound" src="vineboom.mp3"></audio>
 
     <script>
       const video = document.getElementById("video");
       const canvas = document.getElementById("canvas");
       const ctx = canvas.getContext("2d");
-      const sound = document.getElementById("sound");
+      const objeto = document.getElementById("objeto");
+      const meme = document.getElementById("memeSound");
 
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
 
-      let lastY = null; // Para detectar movimentos verticais
+      let desenhando = [];
+      let cor = "cyan";
 
-      async function setupCamera() {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 640, height: 480 },
-        });
-        video.srcObject = stream;
-        return new Promise(
-          (resolve) => (video.onloadedmetadata = () => resolve(video)),
+      let suavX = 0;
+      let suavY = 0;
+
+      let ultimoX = 0;
+      let ultimoY = 0;
+
+      let particulas = [];
+
+      function limpar() {
+        desenhando = [];
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+
+      function salvar() {
+        let link = document.createElement("a");
+        link.download = "desenho.png";
+        link.href = canvas.toDataURL();
+        link.click();
+      }
+
+      function criarParticulas(x, y) {
+        for (let i = 0; i < 5; i++) {
+          let angulo = Math.random() * Math.PI * 2;
+          let velocidade = Math.random() * 3;
+
+          particulas.push({
+            x: x,
+            y: y,
+            vx: Math.cos(angulo) * velocidade,
+            vy: Math.sin(angulo) * velocidade,
+            vida: 15,
+            tamanho: Math.random() * 4 + 2,
+          });
+        }
+      }
+
+      function atualizarParticulas() {
+        for (let i = particulas.length - 1; i >= 0; i--) {
+          let p = particulas[i];
+
+          p.x += p.vx;
+          p.y += p.vy;
+          p.vida--;
+
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.tamanho, 0, Math.PI * 2);
+          ctx.fillStyle = cor;
+          ctx.fill();
+
+          if (p.vida <= 0) {
+            particulas.splice(i, 1);
+          }
+        }
+      }
+
+      function detectarMovimento(x, y) {
+        let dx = x - ultimoX;
+        let dy = y - ultimoY;
+
+        let velocidade = Math.sqrt(dx * dx + dy * dy);
+
+        if (velocidade > 80) {
+          meme.currentTime = 0;
+          meme.play();
+        }
+
+        ultimoX = x;
+        ultimoY = y;
+      }
+
+      function maoFechada(l) {
+        return (
+          l[8].y > l[6].y &&
+          l[12].y > l[10].y &&
+          l[16].y > l[14].y &&
+          l[20].y > l[18].y
         );
       }
 
-      async function main() {
-        await setupCamera();
-
-        // Modelo de detecção de mãos
-        const model = handPoseDetection.SupportedModels.MediaPipeHands;
-        const detector = await handPoseDetection.createDetector(model, {
-          runtime: "tfjs",
-          maxHands: 1,
-        });
-
-        async function detectHands() {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-          const hands = await detector.estimateHands(video);
-
-          if (hands.length > 0) {
-            const keypoints = hands[0].keypoints;
-            const indexFinger = keypoints.find(
-              (p) => p.name === "index_finger_tip",
-            );
-
-            if (indexFinger) {
-              const x = indexFinger.x * (canvas.width / video.videoWidth);
-              const y = indexFinger.y * (canvas.height / video.videoHeight);
-
-              // Desenhar círculo no dedo indicador
-              ctx.beginPath();
-              ctx.arc(x, y, 12, 0, 2 * Math.PI);
-              ctx.fillStyle = "cyan";
-              ctx.fill();
-
-              // Detecta movimento vertical rápido para tocar som
-              if (lastY !== null && Math.abs(y - lastY) > 50) {
-                sound.currentTime = 0;
-                sound.play();
-              }
-              lastY = y;
-            }
-          }
-
-          requestAnimationFrame(detectHands);
-        }
-
-        detectHands();
+      function dedoIndicador(l) {
+        return l[8].y < l[6].y;
       }
 
-      main();
+      function pinça(l) {
+        let polegar = l[4];
+        let indicador = l[8];
+
+        let dx = polegar.x - indicador.x;
+        let dy = polegar.y - indicador.y;
+
+        let distancia = Math.sqrt(dx * dx + dy * dy);
+
+        return distancia < 0.06;
+      }
+
+      const hands = new Hands({
+        locateFile: (file) => {
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        },
+      });
+
+      hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 0,
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence: 0.6,
+      });
+
+      hands.onResults((results) => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (results.multiHandLandmarks) {
+          for (const landmarks of results.multiHandLandmarks) {
+            if (maoFechada(landmarks)) {
+              limpar();
+              return;
+            }
+
+            const indicador = landmarks[8];
+
+            let x = (1 - indicador.x) * canvas.width;
+            let y = indicador.y * canvas.height;
+
+            const suavidade = 0.25;
+
+            suavX += (x - suavX) * suavidade;
+            suavY += (y - suavY) * suavidade;
+
+            detectarMovimento(suavX, suavY);
+
+            criarParticulas(suavX, suavY);
+
+            if (dedoIndicador(landmarks)) {
+              desenhando.push({ x: suavX, y: suavY });
+
+              if (desenhando.length > 1) {
+                let p1 = desenhando[desenhando.length - 2];
+                let p2 = desenhando[desenhando.length - 1];
+
+                ctx.beginPath();
+                ctx.moveTo(p1.x, p1.y);
+                ctx.lineTo(p2.x, p2.y);
+
+                ctx.strokeStyle = cor;
+                ctx.lineWidth = 4;
+                ctx.stroke();
+              }
+            }
+
+            if (pinça(landmarks)) {
+              objeto.style.left = suavX + "px";
+              objeto.style.top = suavY + "px";
+            }
+
+            for (const ponto of landmarks) {
+              const px = (1 - ponto.x) * canvas.width;
+              const py = ponto.y * canvas.height;
+
+              ctx.beginPath();
+              ctx.arc(px, py, 5, 0, Math.PI * 2);
+              ctx.fillStyle = "lime";
+              ctx.fill();
+            }
+          }
+        }
+
+        atualizarParticulas();
+      });
+
+      const camera = new Camera(video, {
+        onFrame: async () => {
+          await hands.send({ image: video });
+        },
+
+        width: 640,
+        height: 480,
+      });
+
+      camera.start();
     </script>
   </body>
 </html>
