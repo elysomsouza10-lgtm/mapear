@@ -1,228 +1,105 @@
 <!doctype html>
-<html lang="pt">
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-    <title>IA Gestos com Mão</title>
-
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-
+    <title>Mapeamento de Movimentos com Som</title>
     <style>
       body {
         margin: 0;
-        background: #0f172a;
-        color: white;
-        font-family: Arial;
+        background: #111;
         overflow: hidden;
-      }
-
-      h1 {
-        position: absolute;
-        top: 10px;
-        left: 20px;
-        z-index: 10;
-      }
-
-      .container {
-        position: relative;
-        width: 100vw;
+        display: flex;
+        justify-content: center;
+        align-items: center;
         height: 100vh;
       }
-
-      video {
-        position: absolute;
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        transform: scaleX(-1);
-      }
-
       canvas {
         position: absolute;
-        width: 100%;
-        height: 100%;
-      }
-
-      #objeto {
-        position: absolute;
-        width: 60px;
-        height: 60px;
-        background: red;
-        border-radius: 10px;
-        top: 200px;
-        left: 200px;
-      }
-
-      .menu {
-        position: absolute;
-        bottom: 20px;
-        left: 20px;
-        z-index: 10;
-      }
-
-      button {
-        padding: 10px 15px;
-        margin: 5px;
-        border: none;
-        border-radius: 10px;
-        background: #22c55e;
-        color: white;
-        font-size: 14px;
-        cursor: pointer;
       }
     </style>
   </head>
-
   <body>
-    <h1>Controle por Gestos</h1>
+    <video id="video" autoplay playsinline style="display: none"></video>
+    <canvas id="canvas"></canvas>
+    <audio
+      id="sound"
+      src="https://www.myinstants.com/media/sounds/tuturu.mp3"
+    ></audio>
 
-    <div class="container">
-      <video id="video" autoplay playsinline></video>
-
-      <canvas id="canvas"></canvas>
-
-      <div id="objeto"></div>
-    </div>
-
-    <div class="menu">
-      <button onclick="cor = 'cyan'">Azul</button>
-      <button onclick="cor = 'red'">Vermelho</button>
-      <button onclick="cor = 'yellow'">Amarelo</button>
-
-      <button onclick="limpar()">Limpar</button>
-      <button onclick="salvar()">Salvar</button>
-    </div>
+    <!-- TensorFlow.js e modelos -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
 
     <script>
       const video = document.getElementById("video");
       const canvas = document.getElementById("canvas");
       const ctx = canvas.getContext("2d");
-      const objeto = document.getElementById("objeto");
+      const sound = document.getElementById("sound");
 
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
 
-      let desenhando = [];
-      let cor = "cyan";
+      let lastY = null; // Para detectar movimentos verticais
 
-      let suavX = 0;
-      let suavY = 0;
-
-      function limpar() {
-        desenhando = [];
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-      }
-
-      function salvar() {
-        let link = document.createElement("a");
-        link.download = "desenho.png";
-        link.href = canvas.toDataURL();
-        link.click();
-      }
-
-      function maoFechada(l) {
-        return (
-          l[8].y > l[6].y &&
-          l[12].y > l[10].y &&
-          l[16].y > l[14].y &&
-          l[20].y > l[18].y
+      async function setupCamera() {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 640, height: 480 },
+        });
+        video.srcObject = stream;
+        return new Promise(
+          (resolve) => (video.onloadedmetadata = () => resolve(video)),
         );
       }
 
-      function dedoIndicador(l) {
-        return l[8].y < l[6].y;
-      }
+      async function main() {
+        await setupCamera();
 
-      function pinça(l) {
-        let polegar = l[4];
-        let indicador = l[8];
+        // Modelo de detecção de mãos
+        const model = handPoseDetection.SupportedModels.MediaPipeHands;
+        const detector = await handPoseDetection.createDetector(model, {
+          runtime: "tfjs",
+          maxHands: 1,
+        });
 
-        let dx = polegar.x - indicador.x;
-        let dy = polegar.y - indicador.y;
+        async function detectHands() {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        let distancia = Math.sqrt(dx * dx + dy * dy);
+          const hands = await detector.estimateHands(video);
 
-        return distancia < 0.06;
-      }
+          if (hands.length > 0) {
+            const keypoints = hands[0].keypoints;
+            const indexFinger = keypoints.find(
+              (p) => p.name === "index_finger_tip",
+            );
 
-      const hands = new Hands({
-        locateFile: (file) => {
-          return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-        },
-      });
+            if (indexFinger) {
+              const x = indexFinger.x * (canvas.width / video.videoWidth);
+              const y = indexFinger.y * (canvas.height / video.videoHeight);
 
-      hands.setOptions({
-        maxNumHands: 1,
-        modelComplexity: 0,
-        minDetectionConfidence: 0.6,
-        minTrackingConfidence: 0.6,
-      });
-
-      hands.onResults((results) => {
-        if (results.multiHandLandmarks) {
-          for (const landmarks of results.multiHandLandmarks) {
-            if (maoFechada(landmarks)) {
-              limpar();
-              return;
-            }
-
-            const indicador = landmarks[8];
-
-            let x = (1 - indicador.x) * canvas.width;
-            let y = indicador.y * canvas.height;
-
-            const suavidade = 0.25;
-
-            suavX += (x - suavX) * suavidade;
-            suavY += (y - suavY) * suavidade;
-
-            if (dedoIndicador(landmarks)) {
-              desenhando.push({ x: suavX, y: suavY });
-
-              if (desenhando.length > 1) {
-                let p1 = desenhando[desenhando.length - 2];
-                let p2 = desenhando[desenhando.length - 1];
-
-                ctx.beginPath();
-                ctx.moveTo(p1.x, p1.y);
-                ctx.lineTo(p2.x, p2.y);
-
-                ctx.strokeStyle = cor;
-                ctx.lineWidth = 4;
-                ctx.stroke();
-              }
-            }
-
-            if (pinça(landmarks)) {
-              objeto.style.left = suavX + "px";
-              objeto.style.top = suavY + "px";
-            }
-
-            for (const ponto of landmarks) {
-              const px = (1 - ponto.x) * canvas.width;
-              const py = ponto.y * canvas.height;
-
+              // Desenhar círculo no dedo indicador
               ctx.beginPath();
-              ctx.arc(px, py, 5, 0, Math.PI * 2);
-              ctx.fillStyle = "lime";
+              ctx.arc(x, y, 12, 0, 2 * Math.PI);
+              ctx.fillStyle = "cyan";
               ctx.fill();
+
+              // Detecta movimento vertical rápido para tocar som
+              if (lastY !== null && Math.abs(y - lastY) > 50) {
+                sound.currentTime = 0;
+                sound.play();
+              }
+              lastY = y;
             }
           }
+
+          requestAnimationFrame(detectHands);
         }
-      });
 
-      const camera = new Camera(video, {
-        onFrame: async () => {
-          await hands.send({ image: video });
-        },
+        detectHands();
+      }
 
-        width: 640,
-        height: 480,
-      });
-
-      camera.start();
+      main();
     </script>
   </body>
 </html>
