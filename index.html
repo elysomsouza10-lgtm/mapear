@@ -2,7 +2,7 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <title>Mão + Meme</title>
+    <title>Detector de Mão Leve</title>
 
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
@@ -12,14 +12,10 @@
       body {
         margin: 0;
         overflow: hidden;
-        background: #000;
+        background: black;
       }
 
-      video {
-        position: absolute;
-        transform: scaleX(-1);
-      }
-
+      video,
       canvas {
         position: absolute;
         transform: scaleX(-1);
@@ -31,38 +27,15 @@
     <video class="input_video"></video>
     <canvas class="output_canvas"></canvas>
 
-    <audio id="memeSound" src="vineboom.mp3"></audio>
-
     <script>
       const videoElement = document.querySelector(".input_video");
       const canvasElement = document.querySelector(".output_canvas");
       const canvasCtx = canvasElement.getContext("2d");
 
-      const meme = document.getElementById("memeSound");
-
-      let ultimoX = 0;
-      let ultimoY = 0;
-
-      function detectarMovimento(x, y) {
-        let dx = x - ultimoX;
-        let dy = y - ultimoY;
-
-        let velocidade = Math.sqrt(dx * dx + dy * dy);
-
-        if (velocidade > 80) {
-          meme.currentTime = 0;
-          meme.play();
-        }
-
-        ultimoX = x;
-        ultimoY = y;
-      }
+      canvasElement.width = 640;
+      canvasElement.height = 480;
 
       function onResults(results) {
-        canvasElement.width = window.innerWidth;
-        canvasElement.height = window.innerHeight;
-
-        canvasCtx.save();
         canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
         canvasCtx.drawImage(
@@ -76,25 +49,16 @@
         if (results.multiHandLandmarks) {
           for (const landmarks of results.multiHandLandmarks) {
             drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {
-              color: "#00FF00",
-              lineWidth: 4,
-            });
-
-            drawLandmarks(canvasCtx, landmarks, {
-              color: "#FF0000",
+              color: "#00ff88",
               lineWidth: 2,
             });
 
-            let dedo = landmarks[8];
-
-            let x = dedo.x * canvasElement.width;
-            let y = dedo.y * canvasElement.height;
-
-            detectarMovimento(x, y);
+            drawLandmarks(canvasCtx, landmarks, {
+              color: "#ff0000",
+              lineWidth: 1,
+            });
           }
         }
-
-        canvasCtx.restore();
       }
 
       const hands = new Hands({
@@ -105,9 +69,9 @@
 
       hands.setOptions({
         maxNumHands: 1,
-        modelComplexity: 1,
-        minDetectionConfidence: 0.7,
-        minTrackingConfidence: 0.7,
+        modelComplexity: 0, // 🔥 deixa muito mais leve
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence: 0.6,
       });
 
       hands.onResults(onResults);
@@ -117,7 +81,7 @@
           await hands.send({ image: videoElement });
         },
 
-        width: 640,
+        width: 640, // 🔥 resolução menor
         height: 480,
       });
 
