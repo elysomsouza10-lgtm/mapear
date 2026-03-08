@@ -1,64 +1,150 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt">
   <head>
     <meta charset="UTF-8" />
-    <title>Detector de Mão Leve</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>IA Gestos com Mão</title>
 
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 
     <style>
       body {
         margin: 0;
+        background: #0f172a;
+        color: white;
+        font-family: Arial;
         overflow: hidden;
-        background: black;
       }
 
-      video,
+      h1 {
+        position: absolute;
+        top: 10px;
+        left: 20px;
+        z-index: 10;
+      }
+
+      .container {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+      }
+
+      video {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transform: scaleX(-1);
+      }
+
       canvas {
         position: absolute;
-        transform: scaleX(-1);
+        width: 100%;
+        height: 100%;
+      }
+
+      #objeto {
+        position: absolute;
+        width: 60px;
+        height: 60px;
+        background: red;
+        border-radius: 10px;
+        top: 200px;
+        left: 200px;
+      }
+
+      .menu {
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        z-index: 10;
+      }
+
+      button {
+        padding: 10px 15px;
+        margin: 5px;
+        border: none;
+        border-radius: 10px;
+        background: #22c55e;
+        color: white;
+        font-size: 14px;
+        cursor: pointer;
       }
     </style>
   </head>
 
   <body>
-    <video class="input_video"></video>
-    <canvas class="output_canvas"></canvas>
+    <h1>Controle por Gestos</h1>
+
+    <div class="container">
+      <video id="video" autoplay playsinline></video>
+
+      <canvas id="canvas"></canvas>
+
+      <div id="objeto"></div>
+    </div>
+
+    <div class="menu">
+      <button onclick="cor = 'cyan'">Azul</button>
+      <button onclick="cor = 'red'">Vermelho</button>
+      <button onclick="cor = 'yellow'">Amarelo</button>
+
+      <button onclick="limpar()">Limpar</button>
+      <button onclick="salvar()">Salvar</button>
+    </div>
 
     <script>
-      const videoElement = document.querySelector(".input_video");
-      const canvasElement = document.querySelector(".output_canvas");
-      const canvasCtx = canvasElement.getContext("2d");
+      const video = document.getElementById("video");
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+      const objeto = document.getElementById("objeto");
 
-      canvasElement.width = 640;
-      canvasElement.height = 480;
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
 
-      function onResults(results) {
-        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+      let desenhando = [];
+      let cor = "cyan";
 
-        canvasCtx.drawImage(
-          results.image,
-          0,
-          0,
-          canvasElement.width,
-          canvasElement.height,
+      let suavX = 0;
+      let suavY = 0;
+
+      function limpar() {
+        desenhando = [];
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+
+      function salvar() {
+        let link = document.createElement("a");
+        link.download = "desenho.png";
+        link.href = canvas.toDataURL();
+        link.click();
+      }
+
+      function maoFechada(l) {
+        return (
+          l[8].y > l[6].y &&
+          l[12].y > l[10].y &&
+          l[16].y > l[14].y &&
+          l[20].y > l[18].y
         );
+      }
 
-        if (results.multiHandLandmarks) {
-          for (const landmarks of results.multiHandLandmarks) {
-            drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {
-              color: "#00ff88",
-              lineWidth: 2,
-            });
+      function dedoIndicador(l) {
+        return l[8].y < l[6].y;
+      }
 
-            drawLandmarks(canvasCtx, landmarks, {
-              color: "#ff0000",
-              lineWidth: 1,
-            });
-          }
-        }
+      function pinça(l) {
+        let polegar = l[4];
+        let indicador = l[8];
+
+        let dx = polegar.x - indicador.x;
+        let dy = polegar.y - indicador.y;
+
+        let distancia = Math.sqrt(dx * dx + dy * dy);
+
+        return distancia < 0.06;
       }
 
       const hands = new Hands({
@@ -69,19 +155,70 @@
 
       hands.setOptions({
         maxNumHands: 1,
-        modelComplexity: 0, // 🔥 deixa muito mais leve
+        modelComplexity: 0,
         minDetectionConfidence: 0.6,
         minTrackingConfidence: 0.6,
       });
 
-      hands.onResults(onResults);
+      hands.onResults((results) => {
+        if (results.multiHandLandmarks) {
+          for (const landmarks of results.multiHandLandmarks) {
+            if (maoFechada(landmarks)) {
+              limpar();
+              return;
+            }
 
-      const camera = new Camera(videoElement, {
+            const indicador = landmarks[8];
+
+            let x = (1 - indicador.x) * canvas.width;
+            let y = indicador.y * canvas.height;
+
+            const suavidade = 0.25;
+
+            suavX += (x - suavX) * suavidade;
+            suavY += (y - suavY) * suavidade;
+
+            if (dedoIndicador(landmarks)) {
+              desenhando.push({ x: suavX, y: suavY });
+
+              if (desenhando.length > 1) {
+                let p1 = desenhando[desenhando.length - 2];
+                let p2 = desenhando[desenhando.length - 1];
+
+                ctx.beginPath();
+                ctx.moveTo(p1.x, p1.y);
+                ctx.lineTo(p2.x, p2.y);
+
+                ctx.strokeStyle = cor;
+                ctx.lineWidth = 4;
+                ctx.stroke();
+              }
+            }
+
+            if (pinça(landmarks)) {
+              objeto.style.left = suavX + "px";
+              objeto.style.top = suavY + "px";
+            }
+
+            for (const ponto of landmarks) {
+              const px = (1 - ponto.x) * canvas.width;
+              const py = ponto.y * canvas.height;
+
+              ctx.beginPath();
+              ctx.arc(px, py, 5, 0, Math.PI * 2);
+              ctx.fillStyle = "lime";
+              ctx.fill();
+            }
+          }
+        }
+      });
+
+      const camera = new Camera(video, {
         onFrame: async () => {
-          await hands.send({ image: videoElement });
+          await hands.send({ image: video });
         },
 
-        width: 640, // 🔥 resolução menor
+        width: 640,
         height: 480,
       });
 
