@@ -4,64 +4,202 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <title>Gerador de Rostos IA</title>
+    <title>Desenhar com a mão</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 
     <style>
       body {
         margin: 0;
+        overflow: hidden;
         background: #0f172a;
-        font-family: Arial;
-        color: white;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        height: 100vh;
       }
 
-      h1 {
-        margin-bottom: 20px;
-      }
+      /* vídeo e canvas ocupam a tela inteira */
 
-      img {
-        width: 350px;
-        height: 350px;
-        border-radius: 20px;
-        box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
-      }
-
-      button {
-        margin-top: 20px;
-        padding: 12px 20px;
-        border: none;
-        border-radius: 10px;
-        background: #22c55e;
-        color: white;
-        font-size: 16px;
-        cursor: pointer;
-      }
-
-      button:hover {
-        background: #16a34a;
+      video,
+      canvas {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        transform: scaleX(-1);
       }
     </style>
   </head>
 
   <body>
-    <h1>Gerador de Pessoa que Não Existe</h1>
+    <video id="video" autoplay playsinline></video>
 
-    <img id="rosto" src="https://thispersondoesnotexist.com/image" />
+    <!-- canvas onde o desenho fica -->
+    <canvas id="desenho"></canvas>
 
-    <button onclick="gerarRosto()">Gerar Novo Rosto</button>
+    <!-- canvas da interface -->
+    <canvas id="interface"></canvas>
 
     <script>
-      function gerarRosto() {
-        // força nova imagem (evita cache)
-        const img = document.getElementById("rosto");
+      // pegando elementos da página
 
-        img.src =
-          "https://thispersondoesnotexist.com/image?" + new Date().getTime();
+      const video = document.getElementById("video");
+
+      const telaDesenho = document.getElementById("desenho");
+      const ctxDesenho = telaDesenho.getContext("2d");
+
+      const telaUI = document.getElementById("interface");
+      const ctxUI = telaUI.getContext("2d");
+
+      // tamanho do canvas
+
+      telaDesenho.width = telaUI.width = window.innerWidth;
+      telaDesenho.height = telaUI.height = window.innerHeight;
+
+      // variável que controla se pode desenhar
+
+      let podeDesenhar = false;
+
+      // controle da linha
+
+      let desenhando = false;
+      let ultimoX = 0;
+      let ultimoY = 0;
+
+      // posição dos botões
+
+      const botaoLigar = { x: 80, y: 80, r: 40 };
+      const botaoDesligar = { x: 200, y: 80, r: 40 };
+
+      // função que vê se dedo está levantado
+
+      function dedoIndicador(mao) {
+        return mao[8].y < mao[6].y;
       }
+
+      // função para saber se encostou no botão
+
+      function encostou(px, py, botao) {
+        let dx = px - botao.x;
+        let dy = py - botao.y;
+
+        let distancia = Math.sqrt(dx * dx + dy * dy);
+
+        return distancia < botao.r;
+      }
+
+      // configuração do detector de mãos
+
+      const hands = new Hands({
+        locateFile: (file) => {
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        },
+      });
+
+      hands.setOptions({
+        maxNumHands: 2,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.7,
+        minTrackingConfidence: 0.7,
+      });
+
+      // quando a IA detecta as mãos
+
+      hands.onResults((resultado) => {
+        ctxUI.clearRect(0, 0, telaUI.width, telaUI.height);
+
+        // desenhar botão verde
+
+        ctxUI.beginPath();
+        ctxUI.arc(botaoLigar.x, botaoLigar.y, botaoLigar.r, 0, Math.PI * 2);
+        ctxUI.fillStyle = "green";
+        ctxUI.fill();
+
+        // desenhar botão vermelho
+
+        ctxUI.beginPath();
+        ctxUI.arc(
+          botaoDesligar.x,
+          botaoDesligar.y,
+          botaoDesligar.r,
+          0,
+          Math.PI * 2,
+        );
+        ctxUI.fillStyle = "red";
+        ctxUI.fill();
+
+        // se encontrou mãos
+
+        if (resultado.multiHandLandmarks) {
+          for (const mao of resultado.multiHandLandmarks) {
+            // posição do dedo indicador
+
+            let dedo = mao[8];
+
+            let x = dedo.x * telaDesenho.width;
+            let y = dedo.y * telaDesenho.height;
+
+            // ativar desenho
+
+            if (encostou(x, y, botaoLigar)) {
+              podeDesenhar = true;
+            }
+
+            // desativar desenho
+
+            if (encostou(x, y, botaoDesligar)) {
+              podeDesenhar = false;
+            }
+
+            // desenhar linha
+
+            if (podeDesenhar && dedoIndicador(mao)) {
+              if (!desenhando) {
+                ultimoX = x;
+                ultimoY = y;
+                desenhando = true;
+              }
+
+              ctxDesenho.beginPath();
+              ctxDesenho.moveTo(ultimoX, ultimoY);
+              ctxDesenho.lineTo(x, y);
+
+              ctxDesenho.strokeStyle = "cyan";
+              ctxDesenho.lineWidth = 6;
+              ctxDesenho.lineCap = "round";
+              ctxDesenho.stroke();
+
+              ultimoX = x;
+              ultimoY = y;
+            } else {
+              desenhando = false;
+            }
+
+            // desenhar a mão na tela
+
+            drawConnectors(ctxUI, mao, HAND_CONNECTIONS, {
+              color: "#00ff88",
+              lineWidth: 3,
+            });
+
+            drawLandmarks(ctxUI, mao, {
+              color: "#ff0000",
+              radius: 2,
+            });
+          }
+        }
+      });
+
+      // iniciar câmera
+
+      const camera = new Camera(video, {
+        onFrame: async () => {
+          await hands.send({ image: video });
+        },
+
+        width: 640,
+        height: 480,
+      });
+
+      camera.start();
     </script>
   </body>
 </html>
