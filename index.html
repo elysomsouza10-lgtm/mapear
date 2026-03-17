@@ -3,7 +3,6 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
     <title>Desenhar com a mão</title>
 
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
@@ -16,8 +15,6 @@
         overflow: hidden;
         background: #0f172a;
       }
-
-      /* vídeo e canvas ocupam a tela inteira */
 
       video,
       canvas {
@@ -32,14 +29,14 @@
   <body>
     <video id="video" autoplay playsinline></video>
 
-    <!-- canvas onde o desenho fica -->
+    <!-- canvas do desenho -->
     <canvas id="desenho"></canvas>
 
     <!-- canvas da interface -->
     <canvas id="interface"></canvas>
 
     <script>
-      // pegando elementos da página
+      // elementos da tela
 
       const video = document.getElementById("video");
 
@@ -49,17 +46,14 @@
       const telaUI = document.getElementById("interface");
       const ctxUI = telaUI.getContext("2d");
 
-      // tamanho do canvas
+      // tamanho dos canvas
 
       telaDesenho.width = telaUI.width = window.innerWidth;
       telaDesenho.height = telaUI.height = window.innerHeight;
 
-      // variável que controla se pode desenhar
+      // controle do desenho
 
       let podeDesenhar = false;
-
-      // controle da linha
-
       let desenhando = false;
       let ultimoX = 0;
       let ultimoY = 0;
@@ -69,13 +63,24 @@
       const botaoLigar = { x: 80, y: 80, r: 40 };
       const botaoDesligar = { x: 200, y: 80, r: 40 };
 
-      // função que vê se dedo está levantado
+      // dedo indicador levantado
 
       function dedoIndicador(mao) {
         return mao[8].y < mao[6].y;
       }
 
-      // função para saber se encostou no botão
+      // detectar mão fechada
+
+      function maoFechada(mao) {
+        let indicador = mao[8].y > mao[6].y;
+        let medio = mao[12].y > mao[10].y;
+        let anelar = mao[16].y > mao[14].y;
+        let mindinho = mao[20].y > mao[18].y;
+
+        return indicador && medio && anelar && mindinho;
+      }
+
+      // detectar toque em botão
 
       function encostou(px, py, botao) {
         let dx = px - botao.x;
@@ -86,7 +91,7 @@
         return distancia < botao.r;
       }
 
-      // configuração do detector de mãos
+      // config do detector de mãos
 
       const hands = new Hands({
         locateFile: (file) => {
@@ -101,19 +106,19 @@
         minTrackingConfidence: 0.7,
       });
 
-      // quando a IA detecta as mãos
+      // quando detectar mãos
 
       hands.onResults((resultado) => {
         ctxUI.clearRect(0, 0, telaUI.width, telaUI.height);
 
-        // desenhar botão verde
+        // botão verde
 
         ctxUI.beginPath();
         ctxUI.arc(botaoLigar.x, botaoLigar.y, botaoLigar.r, 0, Math.PI * 2);
         ctxUI.fillStyle = "green";
         ctxUI.fill();
 
-        // desenhar botão vermelho
+        // botão vermelho
 
         ctxUI.beginPath();
         ctxUI.arc(
@@ -126,7 +131,7 @@
         ctxUI.fillStyle = "red";
         ctxUI.fill();
 
-        // se encontrou mãos
+        // verificar mãos
 
         if (resultado.multiHandLandmarks) {
           for (const mao of resultado.multiHandLandmarks) {
@@ -136,6 +141,12 @@
 
             let x = dedo.x * telaDesenho.width;
             let y = dedo.y * telaDesenho.height;
+
+            // apagar desenho com mão fechada
+
+            if (maoFechada(mao)) {
+              ctxDesenho.clearRect(0, 0, telaDesenho.width, telaDesenho.height);
+            }
 
             // ativar desenho
 
@@ -173,7 +184,7 @@
               desenhando = false;
             }
 
-            // desenhar a mão na tela
+            // desenhar esqueleto da mão
 
             drawConnectors(ctxUI, mao, HAND_CONNECTIONS, {
               color: "#00ff88",
@@ -194,7 +205,6 @@
         onFrame: async () => {
           await hands.send({ image: video });
         },
-
         width: 640,
         height: 480,
       });
