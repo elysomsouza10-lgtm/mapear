@@ -3,8 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-    <title>mapear</title>
+    <title>Desenhar com a mão</title>
 
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
@@ -22,290 +21,192 @@
         position: absolute;
         width: 100%;
         height: 100%;
-      }
-
-      #ui {
-        position: fixed;
-        top: 20px;
-        left: 20px;
-        z-index: 10;
-        display: flex;
-        gap: 10px;
-      }
-
-      button {
-        padding: 10px;
-        border: none;
-        border-radius: 8px;
-        background: #22c55e;
-        color: white;
-        cursor: pointer;
-      }
-
-      button.off {
-        background: #ef4444;
+        transform: scaleX(-1);
       }
     </style>
   </head>
 
   <body>
-    <div id="ui">
-      <button id="toggleDraw">Desenho: ON</button>
-      <button id="clear">Limpar</button>
-    </div>
-
     <video id="video" autoplay playsinline></video>
-    <canvas id="drawCanvas"></canvas>
-    <canvas id="canvas"></canvas>
+
+    <!-- canvas do desenho -->
+    <canvas id="desenho"></canvas>
+
+    <!-- canvas da interface -->
+    <canvas id="interface"></canvas>
 
     <script>
+      // elementos da tela
+
       const video = document.getElementById("video");
 
-      const canvas = document.getElementById("canvas");
-      const ctx = canvas.getContext("2d");
+      const telaDesenho = document.getElementById("desenho");
+      const ctxDesenho = telaDesenho.getContext("2d");
 
-      const drawCanvas = document.getElementById("drawCanvas");
-      const drawCtx = drawCanvas.getContext("2d");
+      const telaUI = document.getElementById("interface");
+      const ctxUI = telaUI.getContext("2d");
 
-      canvas.width = drawCanvas.width = window.innerWidth;
-      canvas.height = drawCanvas.height = window.innerHeight;
+      // tamanho dos canvas
 
-      // ===== CONTROLE =====
-      let drawEnabled = true;
+      telaDesenho.width = telaUI.width = window.innerWidth;
+      telaDesenho.height = telaUI.height = window.innerHeight;
 
-      const toggleBtn = document.getElementById("toggleDraw");
-      const clearBtn = document.getElementById("clear");
+      // controle do desenho
 
-      toggleBtn.onclick = () => {
-        drawEnabled = !drawEnabled;
-        toggleBtn.textContent = drawEnabled ? "Desenho: ON" : "Desenho: OFF";
-        toggleBtn.classList.toggle("off");
-      };
+      let podeDesenhar = false;
+      let desenhando = false;
+      let ultimoX = 0;
+      let ultimoY = 0;
 
-      clearBtn.onclick = () => {
-        drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
-      };
+      // posição dos botões
 
-      // ===== PET =====
-      let pet = {
-        x: canvas.width / 2,
-        y: canvas.height / 2,
-        targetX: canvas.width / 2,
-        targetY: canvas.height / 2,
-        vx: 0,
-        vy: 0,
-        angle: 0,
-        size: 40,
-      };
+      const botaoLigar = { x: 80, y: 80, r: 40 };
+      const botaoDesligar = { x: 200, y: 80, r: 40 };
 
-      // ===== PINCEL PRO =====
-      let points = [];
-      let smoothX = 0;
-      let smoothY = 0;
+      // dedo indicador levantado
 
-      function drawBrush(x, y) {
-        smoothX = smoothX * 0.5 + x * 0.5;
-        smoothY = smoothY * 0.5 + y * 0.5;
-
-        points.push({ x: smoothX, y: smoothY });
-        if (points.length > 25) points.shift();
-        if (points.length < 3) return;
-
-        drawCtx.beginPath();
-        drawCtx.moveTo(points[0].x, points[0].y);
-
-        for (let i = 1; i < points.length - 2; i++) {
-          let xc = (points[i].x + points[i + 1].x) / 2;
-          let yc = (points[i].y + points[i + 1].y) / 2;
-          drawCtx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
-        }
-
-        let dx = points[points.length - 1].x - points[points.length - 2].x;
-        let dy = points[points.length - 1].y - points[points.length - 2].y;
-        let speed = Math.sqrt(dx * dx + dy * dy);
-
-        let thickness = Math.max(2, 12 - speed);
-        let alpha = Math.min(1, 0.3 + speed * 0.08);
-
-        drawCtx.lineWidth = thickness;
-        drawCtx.strokeStyle = `rgba(34,211,238,${alpha})`;
-        drawCtx.lineCap = "round";
-
-        drawCtx.shadowBlur = 10;
-        drawCtx.shadowColor = "#22d3ee";
-
-        drawCtx.stroke();
-        drawCtx.shadowBlur = 0;
+      function dedoIndicador(mao) {
+        return mao[8].y < mao[6].y;
       }
 
-      // ===== GESTOS =====
-      function pinch(m) {
-        let dx = m[8].x - m[4].x;
-        let dy = m[8].y - m[4].y;
-        return Math.sqrt(dx * dx + dy * dy) < 0.06;
+      // detectar mão fechada
+
+      function maoFechada(mao) {
+        let indicador = mao[8].y > mao[6].y;
+        let medio = mao[12].y > mao[10].y;
+        let anelar = mao[16].y > mao[14].y;
+        let mindinho = mao[20].y > mao[18].y;
+
+        return indicador && medio && anelar && mindinho;
       }
 
-      function dedoIndicador(m) {
-        return m[8].y < m[6].y;
+      // detectar toque em botão
+
+      function encostou(px, py, botao) {
+        let dx = px - botao.x;
+        let dy = py - botao.y;
+
+        let distancia = Math.sqrt(dx * dx + dy * dy);
+
+        return distancia < botao.r;
       }
 
-      function maoFechada(m) {
-        return (
-          m[8].y > m[6].y &&
-          m[12].y > m[10].y &&
-          m[16].y > m[14].y &&
-          m[20].y > m[18].y
-        );
-      }
+      // config do detector de mãos
 
-      // ===== ANIMAÇÃO PET =====
-      let blink = 0;
-      let blinkTimer = 0;
-
-      function updatePet() {
-        let dx = pet.targetX - pet.x;
-        let dy = pet.targetY - pet.y;
-
-        pet.vx += dx * 0.02;
-        pet.vy += dy * 0.02;
-
-        pet.vx *= 0.85;
-        pet.vy *= 0.85;
-
-        pet.x += pet.vx;
-        pet.y += pet.vy;
-
-        pet.angle = Math.atan2(pet.vy, pet.vx);
-
-        blinkTimer++;
-        if (blinkTimer > 100) {
-          blink = 1;
-          if (blinkTimer > 110) {
-            blink = 0;
-            blinkTimer = 0;
-          }
-        }
-      }
-
-      function drawPet() {
-        ctx.save();
-        ctx.translate(pet.x, pet.y);
-        ctx.rotate(pet.angle * 0.2);
-
-        let breathe = Math.sin(Date.now() * 0.005) * 2;
-
-        // corpo
-        ctx.fillStyle = "#22d3ee";
-        ctx.shadowBlur = 20;
-        ctx.shadowColor = "#22d3ee";
-
-        ctx.beginPath();
-        ctx.ellipse(
-          0,
-          0,
-          pet.size + breathe,
-          pet.size * 0.8 + breathe,
-          0,
-          0,
-          Math.PI * 2,
-        );
-        ctx.fill();
-
-        ctx.shadowBlur = 0;
-
-        // orelhas
-        ctx.fillStyle = "#06b6d4";
-        ctx.beginPath();
-        ctx.ellipse(-20, -25, 10, 15, -0.3, 0, Math.PI * 2);
-        ctx.ellipse(20, -25, 10, 15, 0.3, 0, Math.PI * 2);
-        ctx.fill();
-
-        // olhos
-        let eyeX = (pet.targetX - pet.x) * 0.02;
-        let eyeY = (pet.targetY - pet.y) * 0.02;
-
-        ctx.fillStyle = "white";
-        ctx.beginPath();
-        ctx.ellipse(-12, -5, 8, 10 - blink * 10, 0, 0, Math.PI * 2);
-        ctx.ellipse(12, -5, 8, 10 - blink * 10, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        // pupilas
-        ctx.fillStyle = "black";
-        ctx.beginPath();
-        ctx.arc(-12 + eyeX, -5 + eyeY, 3, 0, Math.PI * 2);
-        ctx.arc(12 + eyeX, -5 + eyeY, 3, 0, Math.PI * 2);
-        ctx.fill();
-
-        // boca
-        ctx.strokeStyle = "#0f172a";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(0, 10, 10, 0, Math.PI);
-        ctx.stroke();
-
-        ctx.restore();
-      }
-
-      // ===== MEDIAPIPE =====
       const hands = new Hands({
-        locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`,
+        locateFile: (file) => {
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        },
       });
 
       hands.setOptions({
         maxNumHands: 2,
-        modelComplexity: 0,
-        minDetectionConfidence: 0.6,
-        minTrackingConfidence: 0.6,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.7,
+        minTrackingConfidence: 0.7,
       });
 
-      let wasPinching = false;
+      // quando detectar mãos
 
-      hands.onResults((res) => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      hands.onResults((resultado) => {
+        ctxUI.clearRect(0, 0, telaUI.width, telaUI.height);
 
-        if (res.multiHandLandmarks && res.multiHandLandmarks.length) {
-          const m = res.multiHandLandmarks[0];
+        // botão verde
 
-          let x = m[8].x * canvas.width;
-          let y = m[8].y * canvas.height;
+        ctxUI.beginPath();
+        ctxUI.arc(botaoLigar.x, botaoLigar.y, botaoLigar.r, 0, Math.PI * 2);
+        ctxUI.fillStyle = "green";
+        ctxUI.fill();
 
-          drawConnectors(ctx, m, HAND_CONNECTIONS, { color: "#00ff88" });
-          drawLandmarks(ctx, m, { color: "#ff0000" });
+        // botão vermelho
 
-          // apagar
-          if (maoFechada(m)) {
-            drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+        ctxUI.beginPath();
+        ctxUI.arc(
+          botaoDesligar.x,
+          botaoDesligar.y,
+          botaoDesligar.r,
+          0,
+          Math.PI * 2,
+        );
+        ctxUI.fillStyle = "red";
+        ctxUI.fill();
+
+        // verificar mãos
+
+        if (resultado.multiHandLandmarks) {
+          for (const mao of resultado.multiHandLandmarks) {
+            // posição do dedo indicador
+
+            let dedo = mao[8];
+
+            let x = dedo.x * telaDesenho.width;
+            let y = dedo.y * telaDesenho.height;
+
+            // apagar desenho com mão fechada
+
+            if (maoFechada(mao)) {
+              ctxDesenho.clearRect(0, 0, telaDesenho.width, telaDesenho.height);
+            }
+
+            // ativar desenho
+
+            if (encostou(x, y, botaoLigar)) {
+              podeDesenhar = true;
+            }
+
+            // desativar desenho
+
+            if (encostou(x, y, botaoDesligar)) {
+              podeDesenhar = false;
+            }
+
+            // desenhar linha
+
+            if (podeDesenhar && dedoIndicador(mao)) {
+              if (!desenhando) {
+                ultimoX = x;
+                ultimoY = y;
+                desenhando = true;
+              }
+
+              ctxDesenho.beginPath();
+              ctxDesenho.moveTo(ultimoX, ultimoY);
+              ctxDesenho.lineTo(x, y);
+
+              ctxDesenho.strokeStyle = "cyan";
+              ctxDesenho.lineWidth = 6;
+              ctxDesenho.lineCap = "round";
+              ctxDesenho.stroke();
+
+              ultimoX = x;
+              ultimoY = y;
+            } else {
+              desenhando = false;
+            }
+
+            // desenhar esqueleto da mão
+
+            drawConnectors(ctxUI, mao, HAND_CONNECTIONS, {
+              color: "#00ff88",
+              lineWidth: 3,
+            });
+
+            drawLandmarks(ctxUI, mao, {
+              color: "#ff0000",
+              radius: 2,
+            });
           }
-
-          // desenhar
-          if (drawEnabled && dedoIndicador(m)) {
-            drawBrush(x, y);
-          } else {
-            points = [];
-          }
-
-          // mover pet
-          let isPinching = pinch(m);
-          if (isPinching && !wasPinching) {
-            pet.targetX = x;
-            pet.targetY = y;
-          }
-
-          wasPinching = isPinching;
         }
-
-        updatePet();
-        drawPet();
       });
 
-      // ===== CAMERA =====
+      // iniciar câmera
+
       const camera = new Camera(video, {
         onFrame: async () => {
           await hands.send({ image: video });
         },
-        width: 480,
-        height: 360,
+        width: 640,
+        height: 480,
       });
 
       camera.start();
