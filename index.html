@@ -2,96 +2,508 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Desenhar com a mão</title>
 
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>SPACE ENGINE REALISM X</title>
+
+    <!-- MEDIAPIPE -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 
     <style>
-      body {
+      * {
         margin: 0;
-        overflow: hidden;
-        background: #0f172a;
+        padding: 0;
+        box-sizing: border-box;
       }
 
-      video,
+      body {
+        overflow: hidden;
+        background: black;
+        font-family: Arial, sans-serif;
+      }
+
       canvas {
+        display: block;
+      }
+
+      video {
         position: absolute;
-        width: 100%;
-        height: 100%;
+        width: 240px;
+        bottom: 20px;
+        right: 20px;
+        border-radius: 20px;
+        border: 2px solid rgba(255, 255, 255, 0.4);
         transform: scaleX(-1);
+        z-index: 20;
+      }
+
+      #handCanvas {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 15;
+      }
+
+      .hud {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        z-index: 50;
+        color: white;
+        background: rgba(0, 0, 0, 0.35);
+        backdrop-filter: blur(20px);
+        border-radius: 20px;
+        padding: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        width: 360px;
+      }
+
+      .hud h1 {
+        font-size: 28px;
+        margin-bottom: 15px;
+      }
+
+      .line {
+        margin-top: 10px;
+        opacity: 0.9;
+      }
+
+      .bar {
+        height: 10px;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 20px;
+        overflow: hidden;
+        margin-top: 6px;
+      }
+
+      .fill {
+        width: 0%;
+        height: 100%;
+        background: linear-gradient(90deg, #00ff99, #00aaff);
+      }
+
+      .crosshair {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 16px;
+        height: 16px;
+        transform: translate(-50%, -50%);
+        z-index: 60;
+      }
+
+      .crosshair::before,
+      .crosshair::after {
+        content: "";
+        position: absolute;
+        background: rgba(255, 255, 255, 0.8);
+      }
+
+      .crosshair::before {
+        width: 2px;
+        height: 16px;
+        left: 7px;
+      }
+
+      .crosshair::after {
+        width: 16px;
+        height: 2px;
+        top: 7px;
+      }
+
+      .status {
+        margin-top: 15px;
+        color: #00ff99;
+        font-weight: bold;
       }
     </style>
   </head>
 
   <body>
-    <video id="video" autoplay playsinline></video>
+    <div class="hud">
+      <h1>🌌 SPACE ENGINE REALISM X</h1>
 
-    <!-- canvas do desenho -->
-    <canvas id="desenho"></canvas>
+      <div class="line">🤏 Pinça = Zoom</div>
 
-    <!-- canvas da interface -->
-    <canvas id="interface"></canvas>
+      <div class="line">👆 Movimento = Controle da nave</div>
 
-    <script>
-      // elementos da tela
+      <div class="line">✊ Punho = HyperDrive</div>
+
+      <div class="line">✌️ Dois dedos = Laser</div>
+
+      <div class="line">🤟 Portal espacial</div>
+
+      <br />
+
+      VELOCIDADE
+
+      <div class="bar">
+        <div class="fill" id="speedBar"></div>
+      </div>
+
+      <br />
+
+      ENERGIA
+
+      <div class="bar">
+        <div class="fill" id="energyBar"></div>
+      </div>
+
+      <div class="status" id="statusText">STATUS: EXPLORAÇÃO</div>
+    </div>
+
+    <div class="crosshair"></div>
+
+    <video id="video" autoplay muted playsinline></video>
+
+    <canvas id="handCanvas"></canvas>
+
+    <script type="module">
+      import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.module.js";
+
+      // =====================================================
+      // VIDEO
+      // =====================================================
 
       const video = document.getElementById("video");
 
-      const telaDesenho = document.getElementById("desenho");
-      const ctxDesenho = telaDesenho.getContext("2d");
+      navigator.mediaDevices
+        .getUserMedia({
+          video: true,
+        })
+        .then((stream) => {
+          video.srcObject = stream;
+        });
 
-      const telaUI = document.getElementById("interface");
-      const ctxUI = telaUI.getContext("2d");
+      // =====================================================
+      // SCENE
+      // =====================================================
 
-      // tamanho dos canvas
+      const scene = new THREE.Scene();
 
-      telaDesenho.width = telaUI.width = window.innerWidth;
-      telaDesenho.height = telaUI.height = window.innerHeight;
+      scene.fog = new THREE.FogExp2(0x000000, 0.000015);
 
-      // controle do desenho
+      // =====================================================
+      // CAMERA
+      // =====================================================
 
-      let podeDesenhar = false;
-      let desenhando = false;
-      let ultimoX = 0;
-      let ultimoY = 0;
+      const camera = new THREE.PerspectiveCamera(
+        75,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        5000000,
+      );
 
-      // posição dos botões
+      camera.position.set(0, 0, 1000);
 
-      const botaoLigar = { x: 80, y: 80, r: 40 };
-      const botaoDesligar = { x: 200, y: 80, r: 40 };
+      // =====================================================
+      // RENDERER
+      // =====================================================
 
-      // dedo indicador levantado
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+      });
 
-      function dedoIndicador(mao) {
-        return mao[8].y < mao[6].y;
+      renderer.setSize(window.innerWidth, window.innerHeight);
+
+      renderer.setPixelRatio(window.devicePixelRatio);
+
+      renderer.outputEncoding = THREE.sRGBEncoding;
+
+      renderer.shadowMap.enabled = true;
+
+      document.body.appendChild(renderer.domElement);
+
+      // =====================================================
+      // LIGHTS
+      // =====================================================
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.08));
+
+      const sunLight = new THREE.PointLight(0xffffff, 5, 1000000);
+
+      scene.add(sunLight);
+
+      // =====================================================
+      // REALISTIC STARFIELD
+      // =====================================================
+
+      const starGeometry = new THREE.BufferGeometry();
+
+      const starVertices = [];
+
+      const starColors = [];
+
+      for (let i = 0; i < 2000000; i++) {
+        starVertices.push((Math.random() - 0.5) * 500000);
+
+        starVertices.push((Math.random() - 0.5) * 500000);
+
+        starVertices.push((Math.random() - 0.5) * 500000);
+
+        const random = Math.random();
+
+        if (random > 0.95) {
+          starColors.push(0.6, 0.8, 1);
+        } else if (random > 0.85) {
+          starColors.push(1, 0.7, 0.5);
+        } else {
+          starColors.push(1, 1, 1);
+        }
       }
 
-      // detectar mão fechada
+      starGeometry.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(starVertices, 3),
+      );
 
-      function maoFechada(mao) {
-        let indicador = mao[8].y > mao[6].y;
-        let medio = mao[12].y > mao[10].y;
-        let anelar = mao[16].y > mao[14].y;
-        let mindinho = mao[20].y > mao[18].y;
+      starGeometry.setAttribute(
+        "color",
+        new THREE.Float32BufferAttribute(starColors, 3),
+      );
 
-        return indicador && medio && anelar && mindinho;
+      const stars = new THREE.Points(
+        starGeometry,
+        new THREE.PointsMaterial({
+          size: 1,
+          vertexColors: true,
+        }),
+      );
+
+      scene.add(stars);
+
+      // =====================================================
+      // GALAXY
+      // =====================================================
+
+      const galaxies = [];
+
+      function createGalaxy(color1, color2, radius, count, posX, posY, posZ) {
+        const geometry = new THREE.BufferGeometry();
+
+        const vertices = [];
+
+        const colors = [];
+
+        const inside = new THREE.Color(color1);
+
+        const outside = new THREE.Color(color2);
+
+        for (let i = 0; i < count; i++) {
+          const r = Math.random() * radius;
+
+          const spin = r * 0.0015;
+
+          const branch = ((i % 6) / 6) * Math.PI * 2;
+
+          const randomX = (Math.random() - 0.5) * 1200;
+
+          const randomY = (Math.random() - 0.5) * 300;
+
+          const randomZ = (Math.random() - 0.5) * 1200;
+
+          const x = Math.cos(branch + spin) * r + randomX;
+
+          const y = randomY;
+
+          const z = Math.sin(branch + spin) * r + randomZ;
+
+          vertices.push(x + posX, y + posY, z + posZ);
+
+          const mixed = inside.clone();
+
+          mixed.lerp(outside, r / radius);
+
+          colors.push(mixed.r, mixed.g, mixed.b);
+        }
+
+        geometry.setAttribute(
+          "position",
+          new THREE.Float32BufferAttribute(vertices, 3),
+        );
+
+        geometry.setAttribute(
+          "color",
+          new THREE.Float32BufferAttribute(colors, 3),
+        );
+
+        const galaxy = new THREE.Points(
+          geometry,
+          new THREE.PointsMaterial({
+            size: 2,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.9,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+          }),
+        );
+
+        scene.add(galaxy);
+
+        galaxies.push(galaxy);
       }
 
-      // detectar toque em botão
+      createGalaxy(0xffaa00, 0x2244ff, 40000, 700000, 0, 0, -60000);
 
-      function encostou(px, py, botao) {
-        let dx = px - botao.x;
-        let dy = py - botao.y;
+      createGalaxy(0xff00aa, 0x00ffff, 30000, 500000, 100000, 5000, -150000);
 
-        let distancia = Math.sqrt(dx * dx + dy * dy);
+      // =====================================================
+      // REALISTIC PLANETS
+      // =====================================================
 
-        return distancia < botao.r;
+      const planets = [];
+
+      function createPlanet(size, color, distance, speed) {
+        const orbit = new THREE.Group();
+
+        scene.add(orbit);
+
+        const planet = new THREE.Mesh(
+          new THREE.SphereGeometry(size, 128, 128),
+          new THREE.MeshStandardMaterial({
+            color,
+            roughness: 1,
+            metalness: 0,
+          }),
+        );
+
+        planet.position.x = distance;
+
+        orbit.add(planet);
+
+        planets.push({
+          orbit,
+          planet,
+          speed,
+        });
+
+        return planet;
       }
 
-      // config do detector de mãos
+      const earth = createPlanet(120, 0x2266ff, 8000, 0.0008);
+
+      const mars = createPlanet(90, 0xff5533, 14000, 0.0004);
+
+      const giant = createPlanet(350, 0xd9aa88, 30000, 0.0001);
+
+      // =====================================================
+      // MOON
+      // =====================================================
+
+      const moonOrbit = new THREE.Group();
+
+      earth.add(moonOrbit);
+
+      const moon = new THREE.Mesh(
+        new THREE.SphereGeometry(25, 64, 64),
+        new THREE.MeshStandardMaterial({
+          color: 0xaaaaaa,
+        }),
+      );
+
+      moon.position.x = 300;
+
+      moonOrbit.add(moon);
+
+      // =====================================================
+      // BLACK HOLE
+      // =====================================================
+
+      const blackHole = new THREE.Mesh(
+        new THREE.SphereGeometry(500, 128, 128),
+        new THREE.MeshBasicMaterial({
+          color: 0x000000,
+        }),
+      );
+
+      blackHole.position.set(-100000, 0, -200000);
+
+      scene.add(blackHole);
+
+      const accretionDisk = new THREE.Mesh(
+        new THREE.TorusGeometry(1000, 100, 32, 300),
+        new THREE.MeshBasicMaterial({
+          color: 0xff7700,
+        }),
+      );
+
+      accretionDisk.rotation.x = Math.PI / 2;
+
+      blackHole.add(accretionDisk);
+
+      // =====================================================
+      // LASERS
+      // =====================================================
+
+      const lasers = [];
+
+      function shootLaser() {
+        const laser = new THREE.Mesh(
+          new THREE.CylinderGeometry(3, 3, 400, 8),
+          new THREE.MeshBasicMaterial({
+            color: 0x00ffff,
+          }),
+        );
+
+        laser.rotation.x = Math.PI / 2;
+
+        laser.position.copy(camera.position);
+
+        laser.quaternion.copy(camera.quaternion);
+
+        scene.add(laser);
+
+        lasers.push(laser);
+      }
+
+      // =====================================================
+      // PORTAL
+      // =====================================================
+
+      let portal = null;
+
+      function createPortal() {
+        if (portal) return;
+
+        portal = new THREE.Mesh(
+          new THREE.TorusGeometry(2000, 180, 32, 400),
+          new THREE.MeshBasicMaterial({
+            color: 0x8844ff,
+          }),
+        );
+
+        portal.position.set(
+          camera.position.x,
+          camera.position.y,
+          camera.position.z - 12000,
+        );
+
+        scene.add(portal);
+
+        setTimeout(() => {
+          scene.remove(portal);
+
+          portal = null;
+        }, 7000);
+      }
+
+      // =====================================================
+      // HAND TRACKING
+      // =====================================================
+
+      const handCanvas = document.getElementById("handCanvas");
+
+      const handCtx = handCanvas.getContext("2d");
+
+      handCanvas.width = window.innerWidth;
+
+      handCanvas.height = window.innerHeight;
 
       const hands = new Hands({
         locateFile: (file) => {
@@ -106,110 +518,236 @@
         minTrackingConfidence: 0.7,
       });
 
-      // quando detectar mãos
+      // =====================================================
+      // VARIABLES
+      // =====================================================
 
-      hands.onResults((resultado) => {
-        ctxUI.clearRect(0, 0, telaUI.width, telaUI.height);
+      let speed = 10;
 
-        // botão verde
+      let zoomVelocity = 0;
 
-        ctxUI.beginPath();
-        ctxUI.arc(botaoLigar.x, botaoLigar.y, botaoLigar.r, 0, Math.PI * 2);
-        ctxUI.fillStyle = "green";
-        ctxUI.fill();
+      let targetRotationX = 0;
 
-        // botão vermelho
+      let targetRotationY = 0;
 
-        ctxUI.beginPath();
-        ctxUI.arc(
-          botaoDesligar.x,
-          botaoDesligar.y,
-          botaoDesligar.r,
-          0,
-          Math.PI * 2,
-        );
-        ctxUI.fillStyle = "red";
-        ctxUI.fill();
+      let energy = 100;
 
-        // verificar mãos
+      const speedBar = document.getElementById("speedBar");
 
-        if (resultado.multiHandLandmarks) {
-          for (const mao of resultado.multiHandLandmarks) {
-            // posição do dedo indicador
+      const energyBar = document.getElementById("energyBar");
 
-            let dedo = mao[8];
+      const statusText = document.getElementById("statusText");
 
-            let x = dedo.x * telaDesenho.width;
-            let y = dedo.y * telaDesenho.height;
+      function distance(a, b) {
+        const dx = a.x - b.x;
 
-            // apagar desenho com mão fechada
+        const dy = a.y - b.y;
 
-            if (maoFechada(mao)) {
-              ctxDesenho.clearRect(0, 0, telaDesenho.width, telaDesenho.height);
-            }
+        return Math.sqrt(dx * dx + dy * dy);
+      }
 
-            // ativar desenho
+      // =====================================================
+      // HAND RESULTS
+      // =====================================================
 
-            if (encostou(x, y, botaoLigar)) {
-              podeDesenhar = true;
-            }
+      hands.onResults((results) => {
+        handCtx.clearRect(0, 0, handCanvas.width, handCanvas.height);
 
-            // desativar desenho
-
-            if (encostou(x, y, botaoDesligar)) {
-              podeDesenhar = false;
-            }
-
-            // desenhar linha
-
-            if (podeDesenhar && dedoIndicador(mao)) {
-              if (!desenhando) {
-                ultimoX = x;
-                ultimoY = y;
-                desenhando = true;
-              }
-
-              ctxDesenho.beginPath();
-              ctxDesenho.moveTo(ultimoX, ultimoY);
-              ctxDesenho.lineTo(x, y);
-
-              ctxDesenho.strokeStyle = "cyan";
-              ctxDesenho.lineWidth = 6;
-              ctxDesenho.lineCap = "round";
-              ctxDesenho.stroke();
-
-              ultimoX = x;
-              ultimoY = y;
-            } else {
-              desenhando = false;
-            }
-
-            // desenhar esqueleto da mão
-
-            drawConnectors(ctxUI, mao, HAND_CONNECTIONS, {
-              color: "#00ff88",
-              lineWidth: 3,
+        if (results.multiHandLandmarks) {
+          for (const hand of results.multiHandLandmarks) {
+            drawConnectors(handCtx, hand, HAND_CONNECTIONS, {
+              color: "#00ff99",
+              lineWidth: 2,
             });
 
-            drawLandmarks(ctxUI, mao, {
+            drawLandmarks(handCtx, hand, {
               color: "#ff0000",
               radius: 2,
             });
+
+            const thumb = hand[4];
+
+            const index = hand[8];
+
+            const middle = hand[12];
+
+            const ring = hand[16];
+
+            const pinky = hand[20];
+
+            const pinch = distance(thumb, index);
+
+            // ZOOM
+
+            if (pinch < 0.05) {
+              zoomVelocity += 25;
+            }
+
+            if (pinch > 0.18) {
+              zoomVelocity -= 25;
+            }
+
+            // ROTATION
+
+            targetRotationY = (index.x - 0.5) * 4;
+
+            targetRotationX = (index.y - 0.5) * 2;
+
+            // HYPERDRIVE
+
+            const fist = distance(index, middle);
+
+            if (fist < 0.03 && energy > 0) {
+              speed = 400;
+
+              energy -= 1;
+
+              statusText.innerText = "STATUS: HYPERDRIVE";
+            } else {
+              speed = 10;
+
+              energy += 0.2;
+
+              statusText.innerText = "STATUS: EXPLORAÇÃO";
+            }
+
+            // LASER
+
+            const laserGesture = distance(middle, ring);
+
+            if (laserGesture < 0.03) {
+              shootLaser();
+            }
+
+            // PORTAL
+
+            const portalGesture = distance(ring, pinky);
+
+            if (portalGesture < 0.02) {
+              createPortal();
+            }
+
+            // STOP
+
+            if (pinch > 0.35) {
+              speed = 0;
+            }
           }
         }
+
+        energy = Math.max(0, Math.min(100, energy));
       });
 
-      // iniciar câmera
+      // =====================================================
+      // START CAMERA
+      // =====================================================
 
-      const camera = new Camera(video, {
+      const mediapipeCamera = new Camera(video, {
         onFrame: async () => {
-          await hands.send({ image: video });
+          await hands.send({
+            image: video,
+          });
         },
+
         width: 640,
         height: 480,
       });
 
-      camera.start();
+      mediapipeCamera.start();
+
+      // =====================================================
+      // ANIMATE
+      // =====================================================
+
+      function animate() {
+        requestAnimationFrame(animate);
+
+        // CAMERA
+
+        camera.position.z -= speed;
+
+        camera.position.z -= zoomVelocity;
+
+        zoomVelocity *= 0.92;
+
+        camera.rotation.y += (targetRotationY - camera.rotation.y) * 0.03;
+
+        camera.rotation.x += (targetRotationX - camera.rotation.x) * 0.03;
+
+        // UI
+
+        speedBar.style.width = Math.min(speed / 4, 100) + "%";
+
+        energyBar.style.width = energy + "%";
+
+        // PLANETS
+
+        planets.forEach((p) => {
+          p.orbit.rotation.y += p.speed;
+
+          p.planet.rotation.y += 0.003;
+        });
+
+        // MOON
+
+        moonOrbit.rotation.y += 0.01;
+
+        // GALAXIES
+
+        galaxies.forEach((galaxy, index) => {
+          galaxy.rotation.y += 0.00001 * (index + 1);
+        });
+
+        // BLACK HOLE
+
+        accretionDisk.rotation.z += 0.02;
+
+        // LASERS
+
+        lasers.forEach((laser, index) => {
+          laser.translateZ(-1200);
+
+          if (laser.position.z < -1000000) {
+            scene.remove(laser);
+
+            lasers.splice(index, 1);
+          }
+        });
+
+        // STAR WARP
+
+        if (speed > 100) {
+          stars.scale.z = 40;
+        } else {
+          stars.scale.z += (1 - stars.scale.z) * 0.08;
+        }
+
+        // PORTAL
+
+        if (portal) {
+          portal.rotation.z += 0.04;
+        }
+
+        renderer.render(scene, camera);
+      }
+
+      animate();
+
+      // =====================================================
+      // RESIZE
+      // =====================================================
+
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+
+        camera.updateProjectionMatrix();
+
+        renderer.setSize(window.innerWidth, window.innerHeight);
+
+        handCanvas.width = window.innerWidth;
+
+        handCanvas.height = window.innerHeight;
+      });
     </script>
   </body>
 </html>

@@ -1,0 +1,41 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  overflow: hidden;
+  background: black;
+  font-family: Arial, sans-serif;
+}
+
+#webgl {
+  position: fixed;
+  top: 0;
+  left: 0;
+  outline: none;
+}
+
+#loading {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle, #020617, #000);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 999;
+  color: white;
+}
+
+#loading h1 {
+  font-size: 5rem;
+  letter-spacing: 10px;
+  color: #38bdf8;
+}
+
+#loading p {
+  margin-top: 20px;
+  opacity: 0.8;
+}
