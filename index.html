@@ -90,6 +90,38 @@
       // =====================================================
       // VIDEO
       // =====================================================
+      // =====================================================
+      // AUDIO
+      // =====================================================
+      window.addEventListener(
+        "click",
+        async () => {
+          await audioContext.resume();
+
+          audio.play();
+        },
+        { once: true },
+      );
+
+      const audio = new Audio("interestrela.mp3");
+
+      audio.loop = true;
+
+      const audioContext = new AudioContext();
+
+      const source = audioContext.createMediaElementSource(audio);
+
+      const analyser = audioContext.createAnalyser();
+
+      source.connect(analyser);
+
+      analyser.connect(audioContext.destination);
+
+      analyser.fftSize = 256;
+
+      const bufferLength = analyser.frequencyBinCount;
+
+      const dataArray = new Uint8Array(bufferLength);
 
       const video = document.getElementById("video");
 
@@ -246,9 +278,6 @@
       // =====================================================
 
       const handPoints = [];
-      // =====================================================
-      // COLOQUE ESSE BLOCO ANTES DO hands.onResults()
-      // =====================================================
 
       let handsJoined = false;
 
@@ -268,6 +297,86 @@
         const dy = p1.y - p2.y;
 
         return Math.sqrt(dx * dx + dy * dy);
+      }
+      // =====================================================
+      // SISTEMA Naja Cobra
+      // =====================================================
+
+      // OBJETIVO:
+      //
+      // ☝️ levantar APENAS o dedo indicador
+      //
+      // As partículas:
+      //
+      // - se juntam
+      // - formam uma cobra naja 3D
+      // - ficam animadas
+      // - movimento orgânico
+      //
+      // =====================================================
+
+      // ATIVAR
+
+      let najaMode = false;
+
+      // SHAPE
+
+      const najaTargets = [];
+
+      // =====================================================
+      // DETECTAR INDICADOR
+      // =====================================================
+
+      function detectNajaGesture(hand) {
+        const indexUp = hand[8].y < hand[6].y;
+
+        const middleDown = hand[12].y > hand[10].y;
+
+        const ringDown = hand[16].y > hand[14].y;
+
+        const pinkyDown = hand[20].y > hand[18].y;
+
+        return indexUp && middleDown && ringDown && pinkyDown;
+      }
+
+      // =====================================================
+      // CRIAR COBRA NAJA
+      // =====================================================
+
+      function createNajaShape() {
+        najaTargets.length = 0;
+
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          // PROGRESSO
+
+          const t = i / PARTICLE_COUNT;
+
+          // CORPO
+
+          const angle = t * Math.PI * 10;
+
+          const radius = 20 + Math.sin(t * 8) * 10;
+
+          const x = Math.sin(angle) * radius;
+
+          const y = (t - 0.5) * 700;
+
+          const z = Math.cos(angle) * radius;
+
+          // CAPUZ DA NAJA
+
+          let hoodX = x;
+
+          if (t > 0.75) {
+            hoodX += Math.sin(angle) * 120 * (t - 0.75);
+          }
+
+          najaTargets.push({
+            x: hoodX,
+            y,
+            z,
+          });
+        }
       }
 
       hands.onResults((results) => {
@@ -305,6 +414,19 @@
 
         if (results.multiHandLandmarks) {
           for (const hand of results.multiHandLandmarks) {
+            // =====================================================
+            // ATIVAR NAJA
+            // =====================================================
+
+            if (detectNajaGesture(hand)) {
+              if (!najaMode) {
+                createNajaShape();
+              }
+
+              najaMode = true;
+            } else {
+              najaMode = false;
+            }
             drawConnectors(handCtx, hand, HAND_CONNECTIONS, {
               color: "#00ff99",
               lineWidth: 2,
@@ -349,10 +471,22 @@
 
       function animate() {
         requestAnimationFrame(animate);
-
         const pos = geometry.attributes.position.array;
+        analyser.getByteFrequencyData(dataArray);
 
+        // =====================================================
+        // ENERGIA TOTAL DO ÁUDIO
+        // =====================================================
+
+        let audioEnergy = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+          audioEnergy += dataArray[i];
+        }
+
+        audioEnergy /= bufferLength;
         for (let i = 0; i < PARTICLE_COUNT; i++) {
+          const audioForce = audioEnergy * 0.0015;
           const ix = i * 3;
 
           let px = pos[ix];
@@ -360,25 +494,88 @@
           let pz = pos[ix + 2];
 
           const velocity = velocities[i];
+          // =====================================================
+          // PRESSÃO SONORA
+          // =====================================================
+
+          const time = Date.now() * 0.002;
+
+          const pressure = audioEnergy * 0.003;
+
+          // DISTÂNCIA DO CENTRO
+
+          const dist = Math.sqrt(px * px + py * py);
+
+          // ONDA SONORA
+
+          const soundWave = Math.sin(dist * 0.02 - time * 8);
+
+          // FORÇA DA PRESSÃO
+
+          const force = soundWave * pressure;
+
+          // DIREÇÃO
+
+          const angle = Math.atan2(py, px);
+
+          // EMPURRAR PARTÍCULAS
+
+          velocity.x += Math.cos(angle) * force;
+
+          velocity.y += Math.sin(angle) * force;
+
+          // PROFUNDIDADE
+
+          velocity.z += soundWave * pressure * 10;
+          // =====================================================
+          // MORPH NAJA ESTÁTICA
+          // =====================================================
+
+          if (najaMode && najaTargets[i]) {
+            const target = najaTargets[i];
+
+            // SUAVIDADE
+
+            const force = 0.1;
+
+            // MOVIMENTO
+
+            velocity.x += (target.x - px) * force;
+
+            velocity.y += (target.y - py) * force;
+
+            velocity.z += (target.z - pz) * force;
+
+            // FREIO
+
+            velocity.x *= 0.9;
+
+            velocity.y *= 0.9;
+
+            velocity.z *= 0.9;
+          }
+          // =====================================================
+          // MORPH NAJA
+          // =====================================================
+
+          if (najaMode && najaTargets[i]) {
+            const target = najaTargets[i];
+
+            // FORÇA
+
+            velocity.x += (target.x - px) * 0.015;
+
+            velocity.y += (target.y - py) * 0.015;
+
+            velocity.z += (target.z - pz) * 0.015;
+
+            // MOVIMENTO ORGÂNICO
+          }
           const noise = Math.sin(i + Date.now() * 0.001) * 0.02;
 
           velocity.x += noise;
 
           velocity.y += noise;
-          // =====================================================
-          // JUNTAR PARTÍCULAS
-          // =====================================================
-
-          // =====================================================
-          // EXPLOSÃO
-          // =====================================================
-
-          // =====================================================
-          // EXPLOSÃO ORGÂNICA
-          // =====================================================
-          // =====================================================
-          // EXPLOSÃO REALISTA
-          // =====================================================
 
           if (explosionForce > 0) {
             // DIREÇÃO ALEATÓRIA
@@ -473,11 +670,29 @@
           // =========================================
           // APPLY
           // =========================================
+          if (najaMode) {
+            const target = najaTargets[i];
 
-          px += velocity.x;
-          py += velocity.y;
-          pz += velocity.z;
+            px += (target.x - px) * 0.12;
 
+            py += (target.y - py) * 0.12;
+
+            pz += (target.z - pz) * 0.12;
+
+            // ZERAR VELOCIDADE
+
+            velocity.x = 0;
+
+            velocity.y = 0;
+
+            velocity.z = 0;
+          } else {
+            px += velocity.x;
+
+            py += velocity.y;
+
+            pz += velocity.z;
+          }
           pos[ix] = px;
           pos[ix + 1] = py;
           pos[ix + 2] = pz;
