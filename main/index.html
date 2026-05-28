@@ -243,6 +243,15 @@
       const particles = new THREE.Points(geometry, material);
 
       scene.add(particles);
+      // =====================================================
+      // LIGHT
+      // =====================================================
+
+      const light = new THREE.PointLight(0x00ffff, 2, 3000);
+
+      light.position.set(0, 0, 500);
+
+      scene.add(light);
 
       // =====================================================
       // HAND TRACKING CANVAS
@@ -378,7 +387,227 @@
           });
         }
       }
+      // =====================================================
+      // BURACO NEGRO
+      // =====================================================
 
+      let blackHoleMode = false;
+
+      function detectClosedFist(hand) {
+        const fingersDown =
+          hand[8].y > hand[6].y &&
+          hand[12].y > hand[10].y &&
+          hand[16].y > hand[14].y &&
+          hand[20].y > hand[18].y;
+
+        return fingersDown;
+      }
+      // =====================================================
+      // FORMAS ESPECIAIS
+      // =====================================================
+
+      let sphereMode = false;
+
+      let tornadoMode = false;
+
+      let galaxyMode = false;
+
+      const sphereTargets = [];
+
+      const tornadoTargets = [];
+
+      const galaxyTargets = [];
+
+      // =====================================================
+      // GESTOS
+      // =====================================================
+
+      // ✌️ DOIS DEDOS = ESFERA
+
+      function detectSphereGesture(hand) {
+        const indexUp = hand[8].y < hand[6].y;
+
+        const middleUp = hand[12].y < hand[10].y;
+
+        const ringDown = hand[16].y > hand[14].y;
+
+        const pinkyDown = hand[20].y > hand[18].y;
+
+        return indexUp && middleUp && ringDown && pinkyDown;
+      }
+
+      // 🤘 = TORNADO
+
+      function detectTornadoGesture(hand) {
+        const indexUp = hand[8].y < hand[6].y;
+
+        const pinkyUp = hand[20].y < hand[18].y;
+
+        const middleDown = hand[12].y > hand[10].y;
+
+        const ringDown = hand[16].y > hand[14].y;
+
+        return indexUp && pinkyUp && middleDown && ringDown;
+      }
+
+      // =====================================================
+      // 🖕 DEDO MINDINHO = GALÁXIA
+      // =====================================================
+
+      function detectGalaxyGesture(hand) {
+        const pinkyUp = hand[20].y < hand[18].y;
+
+        const indexDown = hand[8].y > hand[6].y;
+
+        const middleDown = hand[12].y > hand[10].y;
+
+        const ringDown = hand[16].y > hand[14].y;
+
+        return pinkyUp && indexDown && middleDown && ringDown;
+      }
+
+      // =====================================================
+      // ESFERA
+      // =====================================================
+
+      function createSphereShape() {
+        sphereTargets.length = 0;
+
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          const phi = Math.acos(-1 + (2 * i) / PARTICLE_COUNT);
+
+          const theta = Math.sqrt(PARTICLE_COUNT * Math.PI) * phi;
+
+          const radius = 300;
+
+          sphereTargets.push({
+            x: radius * Math.cos(theta) * Math.sin(phi),
+            y: radius * Math.sin(theta) * Math.sin(phi),
+            z: radius * Math.cos(phi),
+          });
+        }
+      }
+
+      // =====================================================
+      // TORNADO
+      // =====================================================
+
+      function createTornadoShape() {
+        tornadoTargets.length = 0;
+
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          const t = i / PARTICLE_COUNT;
+
+          const angle = t * 60;
+
+          const radius = t * 250;
+
+          tornadoTargets.push({
+            x: Math.cos(angle) * radius,
+            y: (t - 0.5) * 1200,
+            z: Math.sin(angle) * radius,
+          });
+        }
+      }
+
+      // =====================================================
+      // GALÁXIA
+      // =====================================================
+
+      function createGalaxyShape() {
+        galaxyTargets.length = 0;
+
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          const angle = i * 0.15;
+
+          const radius = Math.sqrt(i) * 6;
+
+          galaxyTargets.push({
+            x: Math.cos(angle) * radius,
+            y: (Math.random() - 0.5) * 60,
+            z: Math.sin(angle) * radius,
+          });
+        }
+      }
+      // =====================================================
+      // SHAPE MODE
+      // =====================================================
+
+      let currentShape = "none";
+      let lastShape = "none";
+      // =====================================================
+      // SONS DOS PODERES
+      // =====================================================
+
+      const najaAudio = new Audio("naja.mp3");
+      najaAudio.playbackRate = 0.8;
+      const sphereAudio = new Audio("sphere.mp3");
+      sphereAudio.playbackRate = 1.1;
+
+      const tornadoAudio = new Audio("tornado.mp3");
+      tornadoAudio.playbackRate = 0.9;
+
+      const galaxyAudio = new Audio("galaxy.mp3");
+      galaxyAudio.playbackRate = 1.2;
+
+      const blackHoleAudio = new Audio("blackhole.mp3");
+      blackHoleAudio.playbackRate = 0.6;
+      const background = new Audio("background.mp3");
+      background.playbackRate = 0.6;
+
+      background.loop = true;
+
+      background.volume = 0.7;
+
+      background.playbackRate = 0.6;
+      // VOLUME
+
+      najaAudio.volume = 0.7;
+
+      sphereAudio.volume = 0.7;
+
+      tornadoAudio.volume = 0.7;
+
+      galaxyAudio.volume = 0.7;
+
+      background.volume = 0.7;
+
+      // CONTROLE
+
+
+      // TOCAR SOM
+      function stopAllSounds() {
+        najaAudio.pause();
+        sphereAudio.pause();
+        tornadoAudio.pause();
+        galaxyAudio.pause();
+        blackHoleAudio.pause();
+
+        najaAudio.currentTime = 0;
+        sphereAudio.currentTime = 0;
+        tornadoAudio.currentTime = 0;
+        galaxyAudio.currentTime = 0;
+        blackHoleAudio.currentTime = 0;
+      }
+      function playShapeSound(shape) {
+        if (lastShape === shape) return;
+
+        lastShape = shape;
+
+        stopAllSounds();
+
+        if (shape === "naja") {
+          najaAudio.play();
+        } else if (shape === "sphere") {
+          sphereAudio.play();
+        } else if (shape === "tornado") {
+          tornadoAudio.play();
+        } else if (shape === "galaxy") {
+          galaxyAudio.play();
+        } else if (shape === "blackhole") {
+          blackHoleAudio.play();
+        }
+      }
       hands.onResults((results) => {
         // =====================================================
         // JUNTAR / EXPLODIR PARTÍCULAS
@@ -417,7 +646,64 @@
             // =====================================================
             // ATIVAR NAJA
             // =====================================================
+            // =====================================================
+            // SHAPE DETECTION
+            // =====================================================
 
+            currentShape = "none";
+
+            // COBRA
+
+            if (detectNajaGesture(hand)) {
+              playShapeSound("naja");
+              currentShape = "naja";
+
+              createNajaShape();
+            }
+
+            // ESFERA
+            else if (detectSphereGesture(hand)) {
+              playShapeSound("sphere");
+              currentShape = "sphere";
+
+              createSphereShape();
+            }
+
+            // TORNADO
+            else if (detectTornadoGesture(hand)) {
+              playShapeSound("tornado");
+              currentShape = "tornado";
+
+              createTornadoShape();
+            }
+
+            // GALÁXIA
+            else if (detectGalaxyGesture(hand)) {
+              playShapeSound("galaxy");
+              currentShape = "galaxy";
+
+              createGalaxyShape();
+            }
+            // =====================================================
+            // DETECTAR BURACO NEGRO
+            // =====================================================
+
+            // =====================================================
+            // MÃO FECHADA = BURACO NEGRO + SOM
+            // =====================================================
+
+            if (detectClosedFist(hand)) {
+              currentShape = "blackhole";
+
+              if (!blackHoleMode) {
+                blackHoleMode = true;
+
+                playShapeSound("blackhole");
+              }
+            } else {
+              blackHoleMode = false;
+              
+            }
             if (detectNajaGesture(hand)) {
               if (!najaMode) {
                 createNajaShape();
@@ -426,23 +712,15 @@
               najaMode = true;
             } else {
               najaMode = false;
-            }
-            drawConnectors(handCtx, hand, HAND_CONNECTIONS, {
-              color: "#00ff99",
-              lineWidth: 2,
-            });
 
-            drawLandmarks(handCtx, hand, {
-              color: "#ff0000",
-              radius: 2,
-            });
 
-            for (const point of hand) {
-              handPoints.push({
-                x: (point.x - 0.5) * 2500,
+              for (const point of hand) {
+                handPoints.push({
+                  x: (point.x - 0.5) * 2500,
 
-                y: -(point.y - 0.5) * 2500,
-              });
+                  y: -(point.y - 0.5) * 2500,
+                });
+              }
             }
           }
         }
@@ -531,22 +809,28 @@
           // MORPH NAJA ESTÁTICA
           // =====================================================
 
-          if (najaMode && najaTargets[i]) {
-            const target = najaTargets[i];
+          // =====================================================
+          // SHAPE MORPH
+          // =====================================================
 
-            // SUAVIDADE
+          let target = null;
 
-            const force = 0.1;
+          if (currentShape === "naja") {
+            target = najaTargets[i];
+          } else if (currentShape === "sphere") {
+            target = sphereTargets[i];
+          } else if (currentShape === "tornado") {
+            target = tornadoTargets[i];
+          } else if (currentShape === "galaxy") {
+            target = galaxyTargets[i];
+          }
 
-            // MOVIMENTO
+          if (target) {
+            px += (target.x - px) * 0.08;
 
-            velocity.x += (target.x - px) * force;
+            py += (target.y - py) * 0.08;
 
-            velocity.y += (target.y - py) * force;
-
-            velocity.z += (target.z - pz) * force;
-
-            // FREIO
+            pz += (target.z - pz) * 0.08;
 
             velocity.x *= 0.9;
 
@@ -634,6 +918,28 @@
               velocity.x += Math.cos(angle) * force;
 
               velocity.y += Math.sin(angle) * force;
+            }
+          }
+          // =====================================================
+          // BURACO NEGRO
+          // =====================================================
+
+          if (blackHoleMode && handPoints[0]) {
+            const hx = handPoints[0].x;
+            const hy = handPoints[0].y;
+
+            const dx = hx - px;
+            const dy = hy - py;
+
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (dist < 500) {
+              const force = (500 - dist) * 0.02;
+
+              velocity.x += dx * 0.002 * force;
+              velocity.y += dy * 0.002 * force;
+
+              velocity.z += Math.sin(Date.now() * 0.002) * 0.3;
             }
           }
           // =========================================
